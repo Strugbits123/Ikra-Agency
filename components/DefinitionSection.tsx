@@ -314,39 +314,17 @@ export default function DefinitionSection() {
           // the pin releases into the footer.
         },
       });
-      /**
-       * Section snapping for the handoff out of the hero, so this section
-       * settles at the top of the screen instead of drifting halfway in.
-       *
-       * CSS scroll-snap cannot do this here, for the same reason `position:
-       * sticky` doesn't work anywhere in this app: ScrollSmoother fakes
-       * scrolling with a transform on #smooth-content (and sets
-       * normalizeScroll), so the browser has no real scroll offset to snap to.
-       * GSAP's snap drives ScrollTrigger.scroll itself, so it works regardless.
-       *
-       * Deliberately its own trigger covering ONLY the gap between the hero's
-       * pin releasing and this section reaching the top — which is exactly the
-       * 100vh where neither section's pin is active. Putting `snap` on the
-       * scrubbed trigger above instead would yank the circle reveal to one end
-       * whenever the user paused mid-way through it.
-       */
-      const handoff = ScrollTrigger.create({
-        trigger: section,
-        start: "top bottom",
-        end: "top top",
-        snap: {
-          // Past a third of the way, commit to this section at the top;
-          // before that, fall back to the finished hero. Never rests between.
-          snapTo: (value) => (value > 0.34 ? 1 : 0),
-          duration: { min: 0.25, max: 0.6 },
-          delay: 0.06,
-          ease: "power2.inOut",
-        },
-      });
+      // There used to be a second, snap-only ScrollTrigger here covering the
+      // 100vh between the hero's pin releasing and this section reaching the
+      // top, to stop the handoff resting halfway. It was the wrong tool: it
+      // treated the seam as something to get past quickly rather than something
+      // to remove, and snapping is itself a boundary cue — it announces "new
+      // section" exactly where the page is supposed to read as continuous. The
+      // gradient in the markup below dissolves the seam instead, which makes
+      // resting halfway a legitimate state and the snap unnecessary.
 
       return () => {
         trigger.kill();
-        handoff.kill();
       };
     }, section);
 
@@ -359,6 +337,55 @@ export default function DefinitionSection() {
       className="relative bg-gray"
       style={{ height: reducedMotion ? "auto" : `${SECTION_VH}vh` }}
     >
+      {/* Cross-fade into the hero, in place of the hard edge a flat background
+          block gives you as it slides up the screen.
+
+          This strip extends 100vh *above* this section's own top edge — exactly
+          the gap where neither section is pinned, which is the range the old
+          snap covered — and paints over the hero's tail as it scrolls away. It
+          is transparent at the top, so there is no edge where it begins, and
+          fully --color-gray at the bottom where it meets this section's own
+          background, so there is no edge there either. Both boundaries are
+          therefore invisible, and the hero dissolves into the gray instead of
+          being cut off by a line travelling up the viewport. Because it is
+          positioned in the document, scrolling *is* the animation — nothing to
+          keep in sync with a ScrollTrigger.
+
+          A viewport-covering `fixed` overlay would have been the obvious way to
+          veil the whole screen, but `fixed` does not work inside
+          ScrollSmoother's transformed #smooth-content — the same reason
+          `sticky` doesn't work anywhere in this app, and why HeroNarrative
+          portals its cursor out to document.body.
+
+          z-40 because HeroNarrative's own layers go up to z-30 and its section
+          is `relative` with `z-index: auto`, so it never establishes a stacking
+          context — those z-indexes compete directly with this one inside
+          #smooth-content. Safe to sit that high: the strip lies entirely above
+          this section's top edge, so it cannot cover this section's content.
+
+          Skipped under reduced motion, where the hero collapses to 100vh — the
+          strip would then cover it exactly, permanently graying out a hero that
+          never scrolls away. */}
+      {!reducedMotion && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 z-40"
+          style={{
+            top: "-100vh",
+            height: "100vh",
+            // Two stops and a delayed start, rather than eased stops built with
+            // color-mix(): if a browser doesn't support the colour function the
+            // whole declaration is invalid, the strip paints nothing, and the
+            // hard seam is silently back. The 18% hold keeps the gray from
+            // being present the instant the strip appears, which is all the
+            // shaping this needs. Gradients interpolate in premultiplied alpha,
+            // so `transparent` here does not darken the ramp.
+            background:
+              "linear-gradient(to bottom, transparent 0%, transparent 18%, var(--color-gray) 100%)",
+          }}
+        />
+      )}
+
       {/* One composition, not two layers. The statement used to be a sibling of
           the stage in normal flow, so once the stage was pinned — fixed, filling
           the viewport — its centred wordmark simply landed on top of the text.
