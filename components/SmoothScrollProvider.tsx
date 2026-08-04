@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { gsap, ScrollSmoother } from "@/lib/gsap";
+import { ScrollSmoother } from "@/lib/gsap";
 
 export default function SmoothScrollProvider({
   children,
