@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import { gsap, ScrollTrigger } from "@/lib/gsap";
@@ -37,124 +37,255 @@ const DOOR_REST_Y = 0.73;
  */
 const BAND_INSET = `calc(${((DOOR_PANEL_W - DOOR_REST_X) * 100).toFixed(2)}% - 2px)`;
 
-const WAVE_TEXT = "Holding your business back";
-/** Half-wavelength of the band's undulating top and bottom edges, in px. */
-const WAVE_STEP = 78;
-/** How far crests and troughs push past the band's flat edge, in px. */
-const WAVE_DEPTH = 12;
-/** Per-character rise of the running text wave, in px. */
-const WAVE_TEXT_RISE = 10;
-/** Seconds for one full up-and-down cycle of a single character. */
-const WAVE_TEXT_CYCLE = 1.7;
-/** Seconds between neighbouring characters — what makes the wave travel. */
-const WAVE_TEXT_STAGGER = 0.065;
+const WAVE_TEXT = "holding your business back";
+/**
+ * Gap between repetitions of the phrase. Written as escapes because these are
+ * non-breaking spaces on purpose: SVG collapses runs of ordinary whitespace,
+ * which would shrink the gap to a single space.
+ */
+const WAVE_TEXT_GAP = "\u00a0\u00a0\u00a0";
+/** How fast the copy travels right-to-left along the ribbon, in px per second. */
+const MARQUEE_SPEED = 55;
+
+/** Gap between the ribbon's box and the closing line beneath it, in px. */
+const LEAP_GAP = 56;
+/** Cubics emitted per half wave. Three tracks a sine to well under a pixel. */
+const SAMPLES_PER_HUMP = 3;
 
 /**
- * The band's outline: a rectangle whose top and bottom edges undulate.
- * Generated from the measured box rather than stretching one fixed viewBox
- * with preserveAspectRatio="none", so the waves keep the same wavelength and
- * depth at every viewport width instead of smearing out on wide screens — and
- * so they regenerate at the right size when the copy wraps to a second line.
+ * Everything about the ribbon, derived from the stage it sits on.
+ *
+ * The whole thing is arranged so both ends land EXACTLY on the door wedges'
+ * inner corners: the left cap's top edge on the left wedge's top edge, the
+ * right cap's bottom edge on the right wedge's bottom edge. That is achieved by
+ * describing the centre line as a straight baseline between those two anchor
+ * points plus a sine — because sin() is zero at both ends for any whole number
+ * of half waves, the oscillation never disturbs where the ends actually land,
+ * no matter how pronounced it gets. Amplitude and hump count are therefore free
+ * to be tuned for looks without ever reopening a gap.
  */
-function wavyBandPath(w: number, h: number) {
-  const halfWaves = Math.max(4, Math.round(w / WAVE_STEP));
-  const step = w / halfWaves;
-  // A quadratic control point pushed two depths past the mid-line peaks at
-  // exactly one depth, so crests land on y=0 and troughs on y=2*WAVE_DEPTH.
-  const edge = (midY: number, from: number, to: number, i: number) =>
-    `Q ${(from + to) / 2} ${midY + (i % 2 === 0 ? -1 : 1) * WAVE_DEPTH * 2} ${to} ${midY}`;
+function bandGeometry(stageW: number, stageH: number) {
+  // Matches BAND_INSET, so the ribbon spans the gap and tucks 2px under each
+  // wedge horizontally.
+  const inset = (DOOR_PANEL_W - DOOR_REST_X) * stageW - 2;
+  const width = stageW - inset * 2;
 
-  const parts = [`M 0 ${WAVE_DEPTH}`];
-  for (let i = 0; i < halfWaves; i++) {
-    parts.push(edge(WAVE_DEPTH, i * step, (i + 1) * step, i));
+  // The wedges' horizontal edges. The left wedge exists only *below* its top
+  // edge, the right wedge only *above* its bottom edge — which is exactly why
+  // the ends have to be pinned rather than merely overlapped.
+  const leftEdge = (DOOR_REST_Y - 0.25) * stageH;
+  const rightEdge = (1.25 - DOOR_REST_Y) * stageH;
+
+  const thickness = gsap.utils.clamp(38, 76, width * 0.055);
+  const fontSize = thickness * 0.55;
+  /** Half waves across the span; each one is a visible crest or trough. */
+  const humps = Math.round(gsap.utils.clamp(4, 10, width / 150));
+
+  // Centre line at each end, offset half a thickness inward so it is the ribbon
+  // *edges* that meet the wedge corners.
+  const startY = leftEdge + thickness / 2;
+  const endY = rightEdge - thickness / 2;
+  const slope = (endY - startY) / width;
+
+  /**
+   * As pronounced as the tilt budget allows. A sine's steepest slope is
+   * A·humps·π/width; past roughly 40° the glyphs — which rotate with the path —
+   * begin pushing out through the ribbon's edges, so that is the ceiling.
+   */
+  const amplitude = Math.min(
+    thickness * 0.9,
+    (Math.max(0, 0.85 - Math.abs(slope)) * width) / (humps * Math.PI),
+  );
+
+  /**
+   * Solved rather than assumed. Because the baseline tilts, the wave's true
+   * extremes are NOT `min/max(startY, endY) ± amplitude` — a sine peak lands
+   * where the baseline has already risen part way, so that guess leaves dead
+   * space in the box and makes `height` (and so the LEAP_GAP measured from it)
+   * lie about where the ribbon really ends.
+   *
+   * c'(x) = slope − A·ω·cos(ωx), so the turning points are wherever
+   * cos(ωx) = slope/(A·ω). Checking those plus the two ends gives the exact
+   * extent — a sampled scan would undershoot it by a fraction of a pixel and
+   * clip the tip of the sharpest crest.
+   */
+  const omega = (humps * Math.PI) / width;
+  const centreAt = (x: number) =>
+    startY + slope * x - amplitude * Math.sin(omega * x);
+  const turningPoints = [0, width];
+  const ratio = amplitude * omega === 0 ? 2 : slope / (amplitude * omega);
+  if (Math.abs(ratio) <= 1) {
+    const base = Math.acos(ratio);
+    for (const phase of [base, -base]) {
+      for (let n = 0; n <= humps + 1; n++) {
+        const x = (phase + 2 * Math.PI * n) / omega;
+        if (x > width) break;
+        if (x >= 0) turningPoints.push(x);
+      }
+    }
   }
-  parts.push(`L ${w} ${h - WAVE_DEPTH}`);
-  for (let i = halfWaves; i > 0; i--) {
-    parts.push(edge(h - WAVE_DEPTH, i * step, (i - 1) * step, i));
-  }
-  return `${parts.join(" ")} Z`;
+  const centres = turningPoints.map(centreAt);
+  const top = Math.min(...centres) - thickness / 2;
+  const bottom = Math.max(...centres) + thickness / 2;
+
+  return {
+    inset,
+    width,
+    thickness,
+    fontSize,
+    humps,
+    amplitude,
+    slope,
+    startY,
+    endY,
+    top,
+    height: bottom - top,
+    /**
+     * Drops the baseline below the centre line so the copy's visual mass, not
+     * its baseline, rides the wave. Done in the path to avoid `dy` on a
+     * textPath, which browsers disagree about.
+     */
+    baselineShift: fontSize * 0.3,
+  };
+}
+
+type BandGeometry = ReturnType<typeof bandGeometry>;
+
+/** The centre line at x, in the band's own coordinates. */
+function waveY(g: BandGeometry, x: number) {
+  return (
+    g.startY -
+    g.top +
+    g.slope * x -
+    g.amplitude * Math.sin((g.humps * Math.PI * x) / g.width)
+  );
+}
+
+/** dy/dx of the same, so each emitted cubic gets the exact tangent. */
+function waveSlope(g: BandGeometry, x: number) {
+  return (
+    g.slope -
+    ((g.amplitude * g.humps * Math.PI) / g.width) *
+      Math.cos((g.humps * Math.PI * x) / g.width)
+  );
 }
 
 /**
- * Orange band with wavy edges, spanning the whole gap the doors leave behind,
- * with the headline running a continuous wave inside it. Only the characters
- * move — the band itself never scales or distorts — and the vertical padding
- * is deliberately deeper than the troughs plus the character rise, so the
- * text can never touch, let alone escape, the wavy outline.
+ * One traversal of the wave as Hermite-matched cubics. `yOffset` shifts the
+ * whole run, which is how both edges of the ribbon come from a single wave, and
+ * `reverse` walks it back right-to-left to close the outline — retracing the
+ * *same* curve rather than mirroring it, so the edges stay parallel and the
+ * ribbon holds one thickness throughout.
  */
-function WavyBand({ animate }: { animate: boolean }) {
-  const boxRef = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState({ w: 0, h: 0 });
-
-  useEffect(() => {
-    const el = boxRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver(() => {
-      setBox({ w: el.offsetWidth, h: el.offsetHeight });
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!animate) return;
-    const el = boxRef.current;
-    if (!el) return;
-    const chars = gsap.utils.toArray<HTMLElement>(
-      el.querySelectorAll("[data-wave-char]"),
+function waveRun(g: BandGeometry, yOffset: number, reverse: boolean) {
+  const n = g.humps * SAMPLES_PER_HUMP;
+  const parts: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const x0 = ((reverse ? n - i : i) / n) * g.width;
+    const x1 = ((reverse ? n - i - 1 : i + 1) / n) * g.width;
+    // Hermite → Bézier: control points a third of the run along each tangent.
+    const d = (x1 - x0) / 3;
+    parts.push(
+      `C ${x0 + d} ${waveY(g, x0) + yOffset + waveSlope(g, x0) * d} ${x1 - d} ${waveY(g, x1) + yOffset - waveSlope(g, x1) * d} ${x1} ${waveY(g, x1) + yOffset}`,
     );
-    if (!chars.length) return;
+  }
+  return parts.join(" ");
+}
 
-    const ctx = gsap.context(() => {
-      // Stagger + yoyo + repeat is what turns a plain rise into a travelling
-      // wave: every character runs the same tween, each one late by a fixed
-      // offset. It owns its own timeline, so it keeps going during the scroll
-      // holds and never touches the scrubbed ScrollTrigger.
-      gsap.to(chars, {
-        y: -WAVE_TEXT_RISE,
-        duration: WAVE_TEXT_CYCLE / 2,
-        ease: "sine.inOut",
+/** The invisible line the copy rides along. */
+const bandTextPath = (g: BandGeometry) =>
+  `M 0 ${waveY(g, 0) + g.baselineShift} ${waveRun(g, g.baselineShift, false)}`;
+
+/**
+ * The ribbon: the same wave offset up and down by half its thickness. Its two
+ * straight end caps sit at x=0 and x=width, and because of how startY/endY were
+ * chosen they land flush against the wedges' corners.
+ */
+const bandOutlinePath = (g: BandGeometry) => {
+  const half = g.thickness / 2;
+  return [
+    `M 0 ${waveY(g, 0) - half}`,
+    waveRun(g, -half, false),
+    `L ${g.width} ${waveY(g, g.width) + half}`,
+    waveRun(g, half, true),
+    "Z",
+  ].join(" ");
+};
+
+/**
+ * Slim orange ribbon spanning the gap between the doors, with the copy running
+ * along its wave and marqueeing right-to-left forever.
+ *
+ * The copy sits on an SVG textPath rather than being split into positioned
+ * spans, which is what tilts each character tangent to the wave, and it makes
+ * containment structural instead of a padding calculation: a glyph that ran
+ * past either end of the path simply isn't rendered.
+ */
+function WavyBand({ g, animate }: { g: BandGeometry; animate: boolean }) {
+  const textPathRef = useRef<SVGTextPathElement>(null);
+  // Sanitised: useId's output contains colons, which are legal in an id but
+  // awkward in a URL fragment.
+  const pathId = `band-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+
+  // Enough repetitions to overfill the path, so there is still copy arriving at
+  // the right-hand end after a full repetition has scrolled off the left.
+  const repeats = Math.max(
+    2,
+    Math.ceil(g.width / (WAVE_TEXT.length * g.fontSize * 0.55)) + 2,
+  );
+
+  useEffect(() => {
+    const textPath = textPathRef.current;
+    if (!animate || !textPath || !repeats) return;
+
+    let tween: ReturnType<typeof gsap.to> | null = null;
+    let cancelled = false;
+
+    // Measure only once the webfont has settled: a fallback-font measurement
+    // would make the loop length wrong and put a visible jump in every repeat.
+    document.fonts.ready.then(() => {
+      if (cancelled) return;
+      const oneRepeat = textPath.getComputedTextLength() / repeats;
+      if (!oneRepeat) return;
+      // Shifting by exactly one repetition lands on an identical-looking frame,
+      // so a plain linear repeat loops seamlessly instead of snapping back.
+      tween = gsap.to(textPath, {
+        attr: { startOffset: -oneRepeat },
+        duration: oneRepeat / MARQUEE_SPEED,
+        ease: "none",
         repeat: -1,
-        yoyo: true,
-        stagger: { each: WAVE_TEXT_STAGGER },
       });
     });
-    return () => ctx.revert();
-  }, [animate]);
+
+    return () => {
+      cancelled = true;
+      tween?.revert();
+    };
+  }, [animate, repeats, g.width, g.fontSize]);
 
   return (
-    <div
-      ref={boxRef}
-      className="relative w-full overflow-hidden px-10 py-12 text-center md:px-16 md:py-14"
-    >
-      {box.w > 0 && (
-        <svg
-          aria-hidden
-          className="absolute inset-0 h-full w-full"
-          viewBox={`0 0 ${box.w} ${box.h}`}
-          preserveAspectRatio="none"
-        >
-          <path d={wavyBandPath(box.w, box.h)} fill="var(--color-accent)" />
-        </svg>
-      )}
-      {/* `relative` (not a z-index) keeps the copy above the absolutely
-          positioned outline: both are z-auto, so paint order is DOM order. */}
-      <p className="relative text-[32px] leading-[1.15] font-medium text-white md:text-[48px] lg:text-[64px]">
-        {/* Splitting into characters destroys the text for a screen reader,
-            so the real sentence is announced once and the pieces are hidden. */}
-        <span className="sr-only">{WAVE_TEXT}</span>
-        {WAVE_TEXT.split("").map((char, i) => (
-          <span
-            key={i}
-            aria-hidden
-            data-wave-char
-            className="inline-block whitespace-pre"
-          >
-            {char}
-          </span>
-        ))}
-      </p>
-    </div>
+    <>
+      {/* The copy is repeated to fill the ribbon, so it is announced once here
+          and the drawing itself is hidden from assistive tech. */}
+      <span className="sr-only">{WAVE_TEXT}</span>
+      <svg
+        aria-hidden
+        className="block w-full"
+        height={g.height}
+        viewBox={`0 0 ${g.width} ${g.height}`}
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <path id={pathId} d={bandTextPath(g)} fill="none" />
+        </defs>
+        <path d={bandOutlinePath(g)} fill="var(--color-accent)" />
+        <text fill="#ffffff" fontSize={g.fontSize} fontWeight={500}>
+          <textPath ref={textPathRef} href={`#${pathId}`} startOffset={0}>
+            {`${WAVE_TEXT}${WAVE_TEXT_GAP}`.repeat(repeats)}
+          </textPath>
+        </text>
+      </svg>
+    </>
   );
 }
 
@@ -170,7 +301,7 @@ const GAP_COPY = (
 );
 
 const LEAP_COPY = (
-  <p className="mt-12 text-[20px] leading-[1.3] font-normal text-ink md:mt-14 md:text-[32px]">
+  <p className="text-[20px] leading-[1.3] font-normal text-ink md:text-[32px]">
     until you <span className="text-accent">make the leap</span>
   </p>
 );
@@ -190,11 +321,13 @@ const LEAP_COPY = (
  *             up-and-right, left down-and-left), but stop partway instead of
  *             leaving — orange wedges stay in the bottom-left and top-right
  *             corners for good; "growth creates a gap" fades out as they go.
- *  0.40–0.60  the wavy orange band fades in, bridging the gap between the two
- *             resting wedges so band and doors read as one continuous form.
- *  0.55–0.75  "until you make the leap" fades in below the band.
- *  0.75–1.00  hold — nothing scroll-driven moves. The band's per-character
- *             wave runs on its own timeline and keeps going regardless.
+ *  0.40–0.50  the wavy orange ribbon draws itself in from left to right (a
+ *             clip, not a fade), bridging the two resting wedges so ribbon and
+ *             doors read as one continuous form. Kept to a tenth of the pin so
+ *             a single scroll completes it.
+ *  0.53–0.63  "until you make the leap" fades in below the ribbon.
+ *  0.63–1.00  hold — nothing scroll-driven moves. The ribbon's copy marquees
+ *             along the wave on its own timeline and keeps going regardless.
  *
  * Layering (back to front): background image/video, the orange doors, the
  * wavy band and its copy, then the header and hero copy above everything.
@@ -214,6 +347,24 @@ export default function HeroNarrative() {
   const introDoneRef = useRef(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [mounted, setMounted] = useState(false);
+  // The ribbon's placement is pinned to the door wedges' corners, so it needs
+  // the stage's real size — both axes — not just its own width.
+  const [stageBox, setStageBox] = useState({ w: 0, h: 0 });
+
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() =>
+      setStageBox({ w: el.offsetWidth, h: el.offsetHeight }),
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const band =
+    stageBox.w > 0 && stageBox.h > 0
+      ? bandGeometry(stageBox.w, stageBox.h)
+      : null;
 
   useEffect(() => {
     setReducedMotion(
@@ -366,14 +517,19 @@ export default function HeroNarrative() {
             ),
           });
 
-          // --- Phase 4: the wavy band fades in (0.40 – 0.60) ---
+          // --- Phase 4: the ribbon draws itself in, left to right (0.40–0.50) ---
+          // A clip rather than a fade, so it reads as the wave travelling
+          // across the gap. Deliberately a tight window — a tenth of the pin,
+          // ~60vh — so one continuous scroll takes it from nothing to full
+          // width instead of needing several.
+          const drawP = gsap.utils.clamp(0, 1, (raw - 0.4) / 0.1);
           gsap.set(wavyRef.current, {
-            opacity: gsap.utils.clamp(0, 1, (raw - 0.4) / 0.2),
+            clipPath: `inset(0 ${(1 - drawP) * 100}% 0 0)`,
           });
 
-          // --- Phase 5: the closing line follows it (0.55 – 0.75) ---
+          // --- Phase 5: the closing line follows it (0.53 – 0.63) ---
           gsap.set(leapRef.current, {
-            opacity: gsap.utils.clamp(0, 1, (raw - 0.55) / 0.2),
+            opacity: gsap.utils.clamp(0, 1, (raw - 0.53) / 0.1),
           });
 
           // --- Phase 6: hold (0.75 – 1.0) — nothing scroll-driven changes;
@@ -535,43 +691,54 @@ export default function HeroNarrative() {
             className="absolute bottom-8 left-1/2 z-10 h-1 w-10 -translate-x-1/2 rounded-full bg-ink/70"
           />
 
-          {reducedMotion ? (
-            /* Nothing animates, so the whole centre reads as one static
-               column: the opening copy the scroll version fades out, the band,
-               and the closing line. Laid out in flow so they stack instead of
-               overlapping the way the two scroll-driven layers do. */
+          {reducedMotion && (
+            /* Nothing animates here, so the opening copy — which the scrolled
+               version fades out — has to live somewhere it won't collide with
+               the ribbon, which is pinned to the wedges in both modes. */
+            <div className="absolute inset-x-8 top-[10%] z-20 text-center md:inset-x-16">
+              {GAP_COPY}
+            </div>
+          )}
+
+          {!reducedMotion && (
             <div
-              className="absolute inset-y-0 z-20 flex flex-col items-center justify-center text-center"
-              style={{ left: BAND_INSET, right: BAND_INSET }}
+              ref={contentRef}
+              className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center px-8 text-center opacity-0"
             >
               {GAP_COPY}
-              <div className="mt-10 w-full">
-                <WavyBand animate={false} />
-              </div>
-              {LEAP_COPY}
             </div>
-          ) : (
+          )}
+
+          {band && (
             <>
+              {/* Placed at the geometry's own `top`, not centred, because its
+                ends have to meet the wedge corners exactly. The clip is what
+                draws it in left-to-right on scroll; reduced motion just shows
+                it whole. */}
               <div
-                ref={contentRef}
-                className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center px-8 text-center opacity-0"
+                ref={wavyRef}
+                className="pointer-events-none absolute z-20"
+                style={{
+                  left: BAND_INSET,
+                  right: BAND_INSET,
+                  top: band.top,
+                  clipPath: reducedMotion ? undefined : "inset(0 100% 0 0)",
+                }}
               >
-                {GAP_COPY}
+                <WavyBand g={band} animate={!reducedMotion} />
               </div>
 
-              {/* Inset to the doors' resting width so the band lands exactly in
-                the gap between them, and centred as one group with the closing
-                line so the pair sits together rather than the band alone. */}
               <div
-                className="pointer-events-none absolute inset-y-0 z-20 flex flex-col items-center justify-center"
-                style={{ left: BAND_INSET, right: BAND_INSET }}
+                ref={leapRef}
+                className="pointer-events-none absolute z-20 text-center"
+                style={{
+                  left: BAND_INSET,
+                  right: BAND_INSET,
+                  top: band.top + band.height + LEAP_GAP,
+                  opacity: reducedMotion ? 1 : 0,
+                }}
               >
-                <div ref={wavyRef} className="w-full opacity-0">
-                  <WavyBand animate />
-                </div>
-                <div ref={leapRef} className="text-center opacity-0">
-                  {LEAP_COPY}
-                </div>
+                {LEAP_COPY}
               </div>
             </>
           )}

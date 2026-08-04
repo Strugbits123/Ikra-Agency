@@ -30,8 +30,8 @@ components/
   SmoothScrollProvider.tsx   ScrollSmoother wrapper (#smooth-wrapper / #smooth-content)
   HeroNarrative.tsx    Hero: clip grows in on load then shrinks away on
                        scroll, orange "doors" open diagonally but stop
-                       partway as corner wedges, wavy orange band fades in
-                       bridging them with a running per-character text wave
+                       partway as corner wedges, slim wavy orange ribbon
+                       fades in bridging them, copy marqueeing along the wave
   DefinitionSection.tsx  Editorial statement + giant "ikra." wordmark whose
                          photo "dot" grows into a full-screen circle reveal
   Logo.tsx             "ikra." wordmark, recoloured via CSS mask
