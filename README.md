@@ -28,10 +28,11 @@ app/
   globals.css          Tailwind v4 @theme tokens (--color-ink, --color-accent, etc.)
 components/
   SmoothScrollProvider.tsx   ScrollSmoother wrapper (#smooth-wrapper / #smooth-content)
-  HeroNarrative.tsx    Hero: clip grows in on load then shrinks away on
-                       scroll, orange "doors" open diagonally but stop
-                       partway as corner wedges, slim wavy orange ribbon
-                       fades in bridging them, copy marqueeing along the wave
+  HeroNarrative.tsx    Hero: a rectangular hole onto fixed-size footage opens
+                       on load then collapses on scroll, orange "doors" open
+                       diagonally but stop partway as corner wedges, slim wavy
+                       orange ribbon draws in right-to-left bridging them,
+                       copy marqueeing along the wave
   DefinitionSection.tsx  Editorial statement + giant "ikra." wordmark whose
                          photo "dot" grows into a full-screen circle reveal
   Logo.tsx             "ikra." wordmark, recoloured via CSS mask
