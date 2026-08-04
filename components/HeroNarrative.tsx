@@ -76,14 +76,22 @@ const holeClip = (p: number) => {
  * How far the hero stays pinned, in vh of actual scrolling. Every phase is
  * expressed in vh of this rather than as a bare 0–1 fraction, so the timeline
  * reads as scroll the user can feel — and so dead scroll is obvious: the last
- * phase ends at 417vh, and everything past that is pinned screen where
- * scrolling does nothing at all. Keep the two numbers close.
+ * phase ends at 417vh, and everything past that is pinned screen where nothing
+ * scroll-driven moves.
+ *
+ * That tail is 67vh, longer than it would normally be allowed to run, and it is
+ * the one place in the sequence where dwell is the point rather than a cost:
+ * "until you make the leap" is the closing line, and the moment the pin releases
+ * the next section starts climbing over it. The ribbon's marquee also keeps
+ * running here on its own timeline, so the screen is never actually still.
+ * Shorten it and the closing line goes by unread; lengthen it much further and
+ * it will start to read as being stuck.
  *
  * The section is this plus the one viewport the pinned stage itself occupies,
  * because the pin runs `top top` → `bottom bottom`: progress 0→1 covers
  * `height − 100vh`, not the whole height.
  */
-const PIN_VH = 444;
+const PIN_VH = 484;
 const SECTION_VH = PIN_VH + 100;
 
 /**
@@ -542,9 +550,12 @@ const LEAP_COPY = (
  *             doors read as one continuous form. Kept to 50vh so a single
  *             scroll completes it.
  *  367–417vh  "until you make the leap" fades in below the ribbon.
- *  417–444vh  hold — nothing scroll-driven moves, so scrolling here does
- *             nothing but wait. Deliberately short; the ribbon's copy marquees
- *             along the wave on its own timeline and keeps going regardless.
+ *  417–484vh  hold on the finished composition. Nothing scroll-driven moves,
+ *             but this is dwell rather than dead scroll: the closing line needs
+ *             to be read before the pin releases, and the moment it does the
+ *             next section starts climbing over it. The ribbon's copy also
+ *             marquees along the wave here on its own timeline, so the screen
+ *             is never actually still. See PIN_VH.
  *
  * Then the pin releases and DefinitionSection takes over. The 100vh handoff
  * between the two pins is snapped — see the `handoff` trigger in that file.
@@ -792,11 +803,12 @@ export default function HeroNarrative() {
             opacity: gsap.utils.clamp(0, 1, (vh - 367) / 50),
           });
 
-          // --- Phase 7: hold (417 – 444vh) — nothing scroll-driven changes,
-          // so this is pinned screen where scrolling does nothing. Kept to
-          // roughly half a screen: enough of a beat to read the finished
-          // composition, short enough that it never reads as being stuck.
-          // The ribbon's marquee carries on under its own timeline.
+          // --- Phase 7: hold (417 – 484vh) — nothing scroll-driven changes.
+          // Two thirds of a screen of dwell on the finished composition, which
+          // is what buys the closing line time to be read: the pin releasing is
+          // also DefinitionSection starting to climb over it, so any beat the
+          // line gets has to come from here. The ribbon's marquee carries on
+          // under its own timeline throughout, so the screen is never still.
         },
       });
 
