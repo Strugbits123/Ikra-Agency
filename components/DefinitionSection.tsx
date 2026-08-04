@@ -137,7 +137,40 @@ export default function DefinitionSection() {
           });
         },
       });
-      return () => trigger.kill();
+      /**
+       * Section snapping for the handoff out of the hero, so this section
+       * settles at the top of the screen instead of drifting halfway in.
+       *
+       * CSS scroll-snap cannot do this here, for the same reason `position:
+       * sticky` doesn't work anywhere in this app: ScrollSmoother fakes
+       * scrolling with a transform on #smooth-content (and sets
+       * normalizeScroll), so the browser has no real scroll offset to snap to.
+       * GSAP's snap drives ScrollTrigger.scroll itself, so it works regardless.
+       *
+       * Deliberately its own trigger covering ONLY the gap between the hero's
+       * pin releasing and this section reaching the top — which is exactly the
+       * 100vh where neither section's pin is active. Putting `snap` on the
+       * scrubbed trigger above instead would yank the circle reveal to one end
+       * whenever the user paused mid-way through it.
+       */
+      const handoff = ScrollTrigger.create({
+        trigger: section,
+        start: "top bottom",
+        end: "top top",
+        snap: {
+          // Past a third of the way, commit to this section at the top;
+          // before that, fall back to the finished hero. Never rests between.
+          snapTo: (value) => (value > 0.34 ? 1 : 0),
+          duration: { min: 0.25, max: 0.6 },
+          delay: 0.06,
+          ease: "power2.inOut",
+        },
+      });
+
+      return () => {
+        trigger.kill();
+        handoff.kill();
+      };
     }, section);
 
     return () => ctx.revert();

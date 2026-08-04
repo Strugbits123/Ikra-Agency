@@ -53,6 +53,20 @@ const WAVE_TEXT_GAP = "\u00a0\u00a0\u00a0";
 /** How fast the copy travels right-to-left along the ribbon, in px per second. */
 const MARQUEE_SPEED = 55;
 
+/**
+ * How far the hero stays pinned, in vh of actual scrolling. Every phase is
+ * expressed in vh of this rather than as a bare 0–1 fraction, so the timeline
+ * reads as scroll the user can feel — and so dead scroll is obvious: the last
+ * phase ends at 315vh, and everything past that is pinned screen where
+ * scrolling does nothing at all. Keep the two numbers close.
+ *
+ * The section is this plus the one viewport the pinned stage itself occupies,
+ * because the pin runs `top top` → `bottom bottom`: progress 0→1 covers
+ * `height − 100vh`, not the whole height.
+ */
+const PIN_VH = 360;
+const SECTION_VH = PIN_VH + 100;
+
 /** Gap between the ribbon's box and the closing line beneath it, in px. */
 const LEAP_GAP = 56;
 /** Cubics emitted per half wave. Three tracks a sine to well under a pixel. */
@@ -346,23 +360,27 @@ const LEAP_COPY = (
  * because there is no second section: it's all one sticky stage and one
  * scrubbed ScrollTrigger, so scrolling back up reverses every phase.
  *
- * Phases (as fractions of total scroll through the pin):
- *  0.00–0.22  the clip shrinks from its resting size down to nothing,
+ * Phases, in vh of actual scrolling through the pin (see PIN_VH):
+ *    0–110vh  the clip shrinks from its resting size down to nothing,
  *             dissolving over the tail; the hero headline fades out with it.
- *  0.22–0.30  the clip is gone and the doors beneath it are still closed, so
+ *  110–150vh  the clip is gone and the doors beneath it are still closed, so
  *             the screen is one unbroken orange surface — "growth creates a
  *             gap" fades up on it, ink on orange.
- *  0.30–0.45  the doors open diagonally, exactly as they always did (right
+ *  150–225vh  the doors open diagonally, exactly as they always did (right
  *             up-and-right, left down-and-left), but stop partway instead of
  *             leaving — orange wedges stay in the bottom-left and top-right
  *             corners for good; "growth creates a gap" fades out as they go.
- *  0.40–0.50  the wavy orange ribbon draws itself in from left to right (a
+ *  200–250vh  the wavy orange ribbon draws itself in from left to right (a
  *             clip, not a fade), bridging the two resting wedges so ribbon and
- *             doors read as one continuous form. Kept to a tenth of the pin so
- *             a single scroll completes it.
- *  0.53–0.63  "until you make the leap" fades in below the ribbon.
- *  0.63–1.00  hold — nothing scroll-driven moves. The ribbon's copy marquees
+ *             doors read as one continuous form. Kept to 50vh so a single
+ *             scroll completes it.
+ *  265–315vh  "until you make the leap" fades in below the ribbon.
+ *  315–360vh  hold — nothing scroll-driven moves, so scrolling here does
+ *             nothing but wait. Deliberately short; the ribbon's copy marquees
  *             along the wave on its own timeline and keeps going regardless.
+ *
+ * Then the pin releases and DefinitionSection takes over. The 100vh handoff
+ * between the two pins is snapped — see the `handoff` trigger in that file.
  *
  * Layering (back to front): background image/video, the orange doors, the
  * wavy band and its copy, then the header and hero copy above everything.
@@ -484,16 +502,19 @@ export default function HeroNarrative() {
           // entrance animation short.
           if (!introDoneRef.current) return;
 
-          const raw = self.progress;
+          // Progress as real scroll distance through the pin, in vh, so each
+          // phase below reads as "from here to here" in scroll the user can
+          // feel, and retiming one cannot silently shift the rest.
+          const vh = self.progress * PIN_VH;
           const W = document.documentElement.clientWidth;
           const H = window.innerHeight;
 
-          // --- Phase 1: the clip shrinks away to nothing (0 – 0.22) ---
+          // --- Phase 1: the clip shrinks away to nothing (0 – 110vh) ---
           // Driven by `scale`, not width/height: it costs no layout work,
           // holds the clip's aspect ratio on the way down, picks up exactly
           // where the entrance timeline's scale 0 → 1 left off, and stays
           // correct across resizes without re-measuring the resting box.
-          const shrinkP = gsap.utils.clamp(0, 1, raw / 0.22);
+          const shrinkP = gsap.utils.clamp(0, 1, vh / 110);
           gsap.set(box, {
             xPercent: -50,
             yPercent: -50,
@@ -503,9 +524,9 @@ export default function HeroNarrative() {
             opacity: 1 - gsap.utils.clamp(0, 1, (shrinkP - 0.7) / 0.3),
           });
 
-          // Headline fades out over the tail of the shrink.
+          // Headline fades out over the tail of the shrink (50 – 110vh).
           gsap.set(headlineRef.current, {
-            opacity: 1 - gsap.utils.clamp(0, 1, (raw - 0.1) / 0.12),
+            opacity: 1 - gsap.utils.clamp(0, 1, (vh - 50) / 60),
           });
 
           // The logo ends up sitting over the revealed background, so it goes
@@ -516,22 +537,22 @@ export default function HeroNarrative() {
             backgroundColor: gsap.utils.interpolate(
               "#390303",
               "#ffffff",
-              gsap.utils.clamp(0, 1, (raw - 0.18) / 0.1),
+              gsap.utils.clamp(0, 1, (vh - 90) / 50),
             ),
           });
 
-          // --- Phase 2: the screen is solid orange (0.22 – 0.30) — the clip
+          // --- Phase 2: the screen is solid orange (110 – 150vh) — the clip
           // is gone and the doors are still closed. "growth creates a gap"
           // fades up on it, so the beat carries the copy instead of being an
           // empty pause.
 
-          // --- Phase 3: doors open diagonally, then stop (0.30 – 0.45) ---
+          // --- Phase 3: doors open diagonally, then stop (150 – 225vh) ---
           // The original motion, unchanged in character: each panel slides out
           // while drifting vertically, with the drift finishing ahead of the
           // slide (hence `drift` running on doorP/0.7). The only difference is
           // where it ends — at DOOR_REST_*, so both panels stay on screen as
           // corner wedges instead of carrying on out of frame.
-          const doorP = gsap.utils.clamp(0, 1, (raw - 0.3) / 0.15);
+          const doorP = gsap.utils.clamp(0, 1, (vh - 150) / 75);
           const drift = gsap.utils.clamp(0, 1, doorP / 0.7);
           gsap.set(panelLeftRef.current, {
             x: -doorP * W * DOOR_REST_X,
@@ -547,29 +568,31 @@ export default function HeroNarrative() {
           // Opacity only, no movement, and both lines go together.
           gsap.set(contentRef.current, {
             opacity: Math.min(
-              gsap.utils.clamp(0, 1, (raw - 0.22) / 0.08),
+              gsap.utils.clamp(0, 1, (vh - 110) / 40),
               1 - doorP,
             ),
           });
 
-          // --- Phase 4: the ribbon draws itself in, left to right (0.40–0.50) ---
+          // --- Phase 4: the ribbon draws itself in, left to right (200–250vh) ---
           // A clip rather than a fade, so it reads as the wave travelling
-          // across the gap. Deliberately a tight window — a tenth of the pin,
-          // ~60vh — so one continuous scroll takes it from nothing to full
-          // width instead of needing several.
-          const drawP = gsap.utils.clamp(0, 1, (raw - 0.4) / 0.1);
+          // across the gap. Deliberately a tight window — 50vh — so one
+          // continuous scroll takes it from nothing to full width instead of
+          // needing several.
+          const drawP = gsap.utils.clamp(0, 1, (vh - 200) / 50);
           gsap.set(wavyRef.current, {
             clipPath: `inset(0 ${(1 - drawP) * 100}% 0 0)`,
           });
 
-          // --- Phase 5: the closing line follows it (0.53 – 0.63) ---
+          // --- Phase 5: the closing line follows it (265 – 315vh) ---
           gsap.set(leapRef.current, {
-            opacity: gsap.utils.clamp(0, 1, (raw - 0.53) / 0.1),
+            opacity: gsap.utils.clamp(0, 1, (vh - 265) / 50),
           });
 
-          // --- Phase 6: hold (0.75 – 1.0) — nothing scroll-driven changes;
-          // the pin stays engaged so there's time to read before release. The
-          // band's character wave carries on under its own timeline.
+          // --- Phase 6: hold (315 – 360vh) — nothing scroll-driven changes,
+          // so this is pinned screen where scrolling does nothing. Kept to
+          // roughly half a screen: enough of a beat to read the finished
+          // composition, short enough that it never reads as being stuck.
+          // The ribbon's marquee carries on under its own timeline.
         },
       });
 
@@ -617,7 +640,7 @@ export default function HeroNarrative() {
     <section
       ref={sectionRef}
       className="relative bg-accent [&_*]:!cursor-none cursor-none"
-      style={{ height: reducedMotion ? "100vh" : "600vh" }}
+      style={{ height: reducedMotion ? "100vh" : `${SECTION_VH}vh` }}
     >
       {mounted &&
         !reducedMotion &&
