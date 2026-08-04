@@ -17,9 +17,8 @@ function RevealBlock({
   return (
     <div
       ref={ref}
-      className={`transition-all duration-1000 ease-out ${
-        revealed ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0"
-      } ${className}`}
+      className={`transition-all duration-1000 ease-out ${revealed ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0"
+        } ${className}`}
     >
       {children}
     </div>
@@ -35,6 +34,44 @@ function RevealBlock({
  */
 const PIN_VH = 260;
 const SECTION_VH = PIN_VH + 100;
+
+/**
+ * The cross-fade out of the hero, in vh — see the veil in the markup.
+ *
+ * HERO_TAIL_VH is the hero's *dead tail*: the scroll between its last phase
+ * finishing (315vh of its pin) and its pin releasing (360vh), where nothing
+ * moves. Borrowing it means the dissolve costs no extra scroll and the tail
+ * stops reading as being stuck. It is the one number here coupled to
+ * HeroNarrative — if that section's tail changes, this should follow.
+ *
+ * VEIL_VH adds the 100vh after that, where the hero's released stage scrolls up
+ * and this section's top edge scrolls in. The veil has to stay opaque across all
+ * of it, because that crossing is exactly the moment you would otherwise see the
+ * two sections stacked in the viewport.
+ */
+const HERO_TAIL_VH = 45;
+const VEIL_VH = HERO_TAIL_VH + 100;
+
+/**
+ * How far the veil overhangs *past* this section's own top edge, in px.
+ *
+ * Without it a hairline of the hero's section background — which is `bg-accent`,
+ * so bright orange — flickers along that edge while scrolling through the
+ * hand-off. Three separately-rounded boxes meet there: this section's top (a vh
+ * multiple), the veil's bottom (also vh, but rounded independently), and the
+ * hero's released stage, which GSAP positions from *measured pixels* and so
+ * cannot be relied on to land on a vh boundary at all. Any of them being a
+ * fraction of a pixel short opens a gap onto the orange, and it flickers rather
+ * than sits still because ScrollSmoother scrolls by fractional pixels, so the
+ * rounding lands differently frame to frame.
+ *
+ * Overhanging costs nothing: below that edge the veil is over this section's own
+ * identical `bg-gray`, and the stage outranks it (z-50 vs z-40) so it can never
+ * cover any content. Same trick, and the same reason, as the 2px BAND_INSET tuck
+ * in HeroNarrative — doubled, because here two rounded edges can drift apart
+ * rather than one.
+ */
+const VEIL_OVERHANG_PX = 4;
 
 const DICTIONARY_CONTENT = (
   <>
@@ -120,6 +157,7 @@ export default function DefinitionSection() {
   const statementRef = useRef<HTMLDivElement>(null);
   const circleRef = useRef<HTMLDivElement>(null);
   const photoRef = useRef<HTMLDivElement>(null);
+  const veilRef = useRef<HTMLDivElement>(null);
   const markRef = useRef<HTMLDivElement>(null);
   const dictionaryRef = useRef<HTMLDivElement>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -314,17 +352,72 @@ export default function DefinitionSection() {
           // the pin releases into the footer.
         },
       });
-      // There used to be a second, snap-only ScrollTrigger here covering the
-      // 100vh between the hero's pin releasing and this section reaching the
-      // top, to stop the handoff resting halfway. It was the wrong tool: it
+      /**
+       * The cross-fade out of the hero: scrubs the veil's opacity 0→1 across the
+       * hero's dead tail, so the hero's last frame dissolves into this section's
+       * gray while it is still pinned and filling the screen. The veil is opaque
+       * from there until this section's own background takes over, which is what
+       * keeps the two sections from ever being visible at once.
+       *
+       * `top VEIL_VH%` is the section's top edge 145% of a viewport below the
+       * viewport top — i.e. 45vh before the hero's pin releases — and `top
+       * bottom` is the moment it reaches the viewport bottom, which is when the
+       * hero's pin releases. So the fade occupies exactly the tail and is fully
+       * opaque before the boundary crossing begins.
+       *
+       * A scrubbed opacity rather than the CSS gradient this replaces. A gradient
+       * cannot do this job: it is anchored to the section's top edge, so its
+       * transparent end sits at the top of the screen at precisely the moment the
+       * boundary appears at the bottom — the wash is weakest exactly where it has
+       * to be strongest, and no height or stop tuning changes that. Opacity is
+       * independent of position, so it can be fully committed before the crossing.
+       *
+       * Eased rather than linear, and the *reverse* direction is why. Scrolling
+       * down, a linear ramp reads fine — detail is being taken away, and the eye
+       * doesn't chase it. Scrolling back up the same ramp reads as the hero
+       * snapping in, because now detail is arriving: the photo, the wedges and the
+       * ribbon all appear at full rate from the very first frame of the fade, and
+       * the eye locks onto them. An inOut curve flattens both ends, so the hero
+       * emerges from the gray gradually instead of announcing itself — and going
+       * down it also lets the closing copy hold a little longer before it starts
+       * washing out. It cannot be fixed by widening the window instead: the fade
+       * cannot begin before the hero's copy lands (315vh of its pin) and must be
+       * opaque before the boundary crossing starts (360vh), so 45vh is all there
+       * is, and the curve is the only remaining lever.
+       *
+       * f(1) is exactly 1, which the no-two-sections guarantee depends on.
+       *
+       * onLeave/onLeaveBack pin the end states: onUpdate only fires inside the
+       * range, so jumping past it (an anchor, a restored scroll position) would
+       * otherwise leave the veil at whatever it last held.
+       */
+      const veil = veilRef.current;
+      // sine rather than a power curve. All the inOut options fix the arrival
+      // (~3% of the hero showing after the first 5vh of scrolling up, against 11%
+      // linear); they differ in what they do to the middle, where sine is the
+      // gentlest — 1.6× the linear rate against 2× for power1 and 3× for power2.
+      // For a full-screen cross-dissolve a rushed middle is its own kind of pop,
+      // so the softest overall curve wins. power1.inOut / power2.inOut are the
+      // swaps if the arrival still wants to be slower.
+      const veilEase = gsap.parseEase("sine.inOut");
+      const veilTrigger = ScrollTrigger.create({
+        trigger: section,
+        start: `top ${VEIL_VH}%`,
+        end: "top bottom",
+        onUpdate: (self) => gsap.set(veil, { opacity: veilEase(self.progress) }),
+        onLeave: () => gsap.set(veil, { opacity: 1 }),
+        onLeaveBack: () => gsap.set(veil, { opacity: 0 }),
+      });
+
+      // There used to be a snap-only ScrollTrigger here covering the same 100vh
+      // crossing, to stop the handoff resting halfway. It was the wrong tool: it
       // treated the seam as something to get past quickly rather than something
       // to remove, and snapping is itself a boundary cue — it announces "new
-      // section" exactly where the page is supposed to read as continuous. The
-      // gradient in the markup below dissolves the seam instead, which makes
-      // resting halfway a legitimate state and the snap unnecessary.
+      // section" exactly where the page is supposed to read as continuous.
 
       return () => {
         trigger.kill();
+        veilTrigger.kill();
       };
     }, section);
 
@@ -337,51 +430,52 @@ export default function DefinitionSection() {
       className="relative bg-gray"
       style={{ height: reducedMotion ? "auto" : `${SECTION_VH}vh` }}
     >
-      {/* Cross-fade into the hero, in place of the hard edge a flat background
-          block gives you as it slides up the screen.
+      {/* The veil: a slab of this section's own gray that reaches VEIL_VH *above*
+          this section's top edge, so it blankets the whole viewport for the
+          entire hand-off out of the hero. Its opacity is scrubbed by the
+          `veilTrigger` above; it is flat gray, not a gradient, so the dissolve is
+          uniform and in place rather than a wash sweeping up the screen.
 
-          This strip extends 100vh *above* this section's own top edge — exactly
-          the gap where neither section is pinned, which is the range the old
-          snap covered — and paints over the hero's tail as it scrolls away. It
-          is transparent at the top, so there is no edge where it begins, and
-          fully --color-gray at the bottom where it meets this section's own
-          background, so there is no edge there either. Both boundaries are
-          therefore invisible, and the hero dissolves into the gray instead of
-          being cut off by a line travelling up the viewport. Because it is
-          positioned in the document, scrolling *is* the animation — nothing to
-          keep in sync with a ScrollTrigger.
+          Sizing it VEIL_VH tall — rather than pinning it — is what removes the
+          "two sections at once" problem, and the arithmetic is the point: it
+          spans from HERO_TAIL_VH before the hero's pin releases all the way down
+          to this section's top edge, which means for every scroll position in
+          that range the viewport is covered by veil above and this section's own
+          identical `bg-gray` below. There is no scroll position where a boundary
+          is visible, so nothing needs pinning to hold it in place.
+
+          What you actually see across the hand-off: the hero's final frame
+          dissolving to gray, then a uniform gray field out of which the statement
+          rises. The stage is transparent and sits *above* the veil (z-50), so its
+          text travels up through the gray with no edge of its own — the section
+          arrives without ever showing where it starts.
 
           A viewport-covering `fixed` overlay would have been the obvious way to
-          veil the whole screen, but `fixed` does not work inside
-          ScrollSmoother's transformed #smooth-content — the same reason
-          `sticky` doesn't work anywhere in this app, and why HeroNarrative
-          portals its cursor out to document.body.
+          blanket the screen, but `fixed` does not work inside ScrollSmoother's
+          transformed #smooth-content — the same reason `sticky` doesn't work
+          anywhere in this app, and why HeroNarrative portals its cursor out to
+          document.body.
 
-          z-40 because HeroNarrative's own layers go up to z-30 and its section
-          is `relative` with `z-index: auto`, so it never establishes a stacking
+          z-40 because HeroNarrative's own layers go up to z-30 and its section is
+          `relative` with `z-index: auto`, so it never establishes a stacking
           context — those z-indexes compete directly with this one inside
-          #smooth-content. Safe to sit that high: the strip lies entirely above
-          this section's top edge, so it cannot cover this section's content.
+          #smooth-content. It has to beat them to cover the hero, and the stage
+          then has to beat it.
 
           Skipped under reduced motion, where the hero collapses to 100vh — the
-          strip would then cover it exactly, permanently graying out a hero that
-          never scrolls away. */}
+          veil would cover it outright, permanently graying out a hero that never
+          scrolls away. */}
       {!reducedMotion && (
         <div
+          ref={veilRef}
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 z-40"
+          className="pointer-events-none absolute inset-x-0 z-40 bg-gray opacity-0"
           style={{
-            top: "-100vh",
-            height: "100vh",
-            // Two stops and a delayed start, rather than eased stops built with
-            // color-mix(): if a browser doesn't support the colour function the
-            // whole declaration is invalid, the strip paints nothing, and the
-            // hard seam is silently back. The 18% hold keeps the gray from
-            // being present the instant the strip appears, which is all the
-            // shaping this needs. Gradients interpolate in premultiplied alpha,
-            // so `transparent` here does not darken the ramp.
-            background:
-              "linear-gradient(to bottom, transparent 0%, transparent 18%, var(--color-gray) 100%)",
+            top: `-${VEIL_VH}vh`,
+            // Overhangs this section's top edge rather than stopping on it — see
+            // VEIL_OVERHANG_PX. Stopping exactly on the edge leaves an orange
+            // hairline flickering there.
+            height: `calc(${VEIL_VH}vh + ${VEIL_OVERHANG_PX}px)`,
           }}
         />
       )}
@@ -393,14 +487,14 @@ export default function DefinitionSection() {
           layout rather than independent layers, so they cannot overlap. */}
       <div
         ref={stageRef}
-        className="relative flex h-screen w-full flex-col overflow-hidden px-8 pt-16 pb-10 md:px-16 md:pt-20"
+        className="relative z-50 flex h-screen w-full flex-col overflow-hidden px-8 pt-16 pb-10 md:px-16 md:pt-20"
       >
         {/* GSAP drives `y` on this wrapper while RevealBlock's own entrance
             transform stays on the element inside it — separate elements, so the
             two transforms compose instead of one clobbering the other. */}
         <div ref={statementRef}>
           <RevealBlock>
-            <p className="max-w-4xl text-[26px] leading-[1.3] font-normal text-ink md:text-[39px]">
+            <p className="max-w-4xl text-[26px] leading-[1.3] font-normal text-ink md:text-[35px]">
               We are rebranding agency for the most discerning ambitions. Our
               work transforms a simple idea into an experience of true rarity
               and prestige.
@@ -410,7 +504,7 @@ export default function DefinitionSection() {
 
         {/* Takes whatever height the statement leaves. `min-h-0` lets it shrink
             rather than pushing back up into the text on a short viewport. */}
-        <div className="relative mt-6 grid min-h-0 flex-1 place-items-center">
+        <div className="relative mt-0 grid min-h-0 flex-1 place-items-center">
           {/* Grid stacking: both children sit in the same cell, so the brand
               name layers above the round image with no absolute positioning and
               no translate-centring for GSAP to overwrite later.
