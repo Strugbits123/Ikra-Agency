@@ -28,9 +28,10 @@ app/
   globals.css          Tailwind v4 @theme tokens (--color-ink, --color-accent, etc.)
 components/
   SmoothScrollProvider.tsx   ScrollSmoother wrapper (#smooth-wrapper / #smooth-content)
-  HeroNarrative.tsx    Hero: clip grows on load + scroll, orange "doors" open
-                       diagonally to reveal the background, "growth creates
-                       a gap" copy scales in from the centre
+  HeroNarrative.tsx    Hero: clip grows in on load then shrinks away on
+                       scroll, orange "doors" open diagonally but stop
+                       partway as corner wedges, wavy orange band fades in
+                       bridging them with a running per-character text wave
   DefinitionSection.tsx  Editorial statement + giant "ikra." wordmark whose
                          photo "dot" grows into a full-screen circle reveal
   Logo.tsx             "ikra." wordmark, recoloured via CSS mask
@@ -75,7 +76,7 @@ useEffect(() => {
 ## Other non-obvious things
 
 - **GSAP's `scale` (and any transform property) overwrites the *entire* inline `transform` style.** If an element is centered via Tailwind's `-translate-x-1/2 -translate-y-1/2`, the moment GSAP touches `scale` on that element it silently wipes the translate-based centering (inline styles fully replace whichever CSS rule wins, not just the property you touched). Fix: center via GSAP's own `xPercent: -50, yPercent: -50` in the same `gsap.set`/`gsap.to` call instead of Tailwind's translate classes, so GSAP's internal transform cache always includes it.
-- **Don't measure a scaled-to-0 element with `getBoundingClientRect()`.** Elements that start hidden via a `scale-0` class (to avoid a flash-of-unstyled-content before the entrance animation runs) report `0×0` from `getBoundingClientRect()`, since it returns the *post-transform, on-screen* size. Use `getComputedStyle(el).width/height` instead — it reflects the underlying layout box and ignores `transform` entirely. See the comments in `HeroNarrative.tsx` where the clip's resting size is measured.
+- **Don't measure a scaled-to-0 element with `getBoundingClientRect()`.** Elements that start hidden via a `scale-0` class (to avoid a flash-of-unstyled-content before the entrance animation runs) report `0×0` from `getBoundingClientRect()`, since it returns the *post-transform, on-screen* size. Use `getComputedStyle(el).width/height` instead — it reflects the underlying layout box and ignores `transform` entirely. The live example is `DefinitionSection.tsx`, which reads the circle's resting diameter that way before scaling it up.
 - **GSAP's ticker (and therefore any scrub/tween) pauses when the tab isn't visible/focused** (`document.hidden`). Don't be alarmed if animations appear "stuck" in a background tab or an automated screenshot tool — that's expected, not a bug.
 - **Background footage is still a placeholder.** `HeroNarrative.tsx` has a `BACKGROUND_VIDEO_SRC` constant (currently `null`, falling back to a still image). Drop the real footage in `public/video/` and set the constant — the `<video>` markup is already wired with `autoPlay muted loop playsInline` and the still as its poster, so no other changes are needed.
 - **Possible mobile overflow to check:** at narrow viewports, the giant "ikra." wordmark in `DefinitionSection` may render wider than the screen (flagged but not yet fixed — the circle-growth math self-corrects regardless, so it's a visual/layout concern, not a functional one).
