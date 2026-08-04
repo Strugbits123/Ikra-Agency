@@ -25,7 +25,6 @@ export default function SmoothScrollProvider({
 
     return () => {
       smoother.kill();
-      gsap.ticker.remove(smoother.render as unknown as (t: number) => void);
     };
   }, []);
 
