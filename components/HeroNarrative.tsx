@@ -21,11 +21,17 @@ const BACKGROUND_VIDEO_SRC: string | null = null;
  * top-right corners permanently.
  *
  * With a panel DOOR_PANEL_W wide, these land the left panel's inner edge at
- * 23% and its top edge at 48% of the viewport (the right panel mirrors it), so
+ * 29% and its top edge at 48% of the viewport (the right panel mirrors it), so
  * the two wedges straddle the middle of the screen and the band bridges them.
+ *
+ * DOOR_REST_X is the one knob for how much orange stays on screen: less travel
+ * leaves wider wedges and so a shorter span for the ribbon to cross. The
+ * ribbon's ends follow automatically — both BAND_INSET and the geometry below
+ * are derived from these, never restated — so widening the wedges cannot pull
+ * the wave off their corners.
  */
 const DOOR_PANEL_W = 0.58;
-const DOOR_REST_X = 0.35;
+const DOOR_REST_X = 0.29;
 const DOOR_REST_Y = 0.73;
 
 /**
@@ -76,10 +82,16 @@ function bandGeometry(stageW: number, stageH: number) {
   const leftEdge = (DOOR_REST_Y - 0.25) * stageH;
   const rightEdge = (1.25 - DOOR_REST_Y) * stageH;
 
-  const thickness = gsap.utils.clamp(38, 76, width * 0.055);
+  // Scales faster than the span now that the wedges are wider and the span is
+  // shorter, so the copy inside doesn't shrink with it.
+  const thickness = gsap.utils.clamp(44, 76, width * 0.072);
   const fontSize = thickness * 0.55;
-  /** Half waves across the span; each one is a visible crest or trough. */
-  const humps = Math.round(gsap.utils.clamp(4, 10, width / 150));
+  /**
+   * Half waves across the span; each one is a visible crest or trough. Must
+   * stay a whole number — that is what puts sin() at exactly zero on both ends
+   * and so pins the ribbon to the wedge corners.
+   */
+  const humps = Math.round(gsap.utils.clamp(3, 8, width / 165));
 
   // Centre line at each end, offset half a thickness inward so it is the ribbon
   // *edges* that meet the wedge corners.
@@ -88,12 +100,15 @@ function bandGeometry(stageW: number, stageH: number) {
   const slope = (endY - startY) / width;
 
   /**
-   * As pronounced as the tilt budget allows. A sine's steepest slope is
-   * A·humps·π/width; past roughly 40° the glyphs — which rotate with the path —
-   * begin pushing out through the ribbon's edges, so that is the ceiling.
+   * Deliberately gentle: held to 15–25px so the crests read clearly without
+   * overwhelming the copy riding on them. The second term is a safety ceiling
+   * rather than the usual driver — a sine's steepest slope is A·humps·π/width,
+   * and past roughly 40° the glyphs (which rotate with the path) begin pushing
+   * out through the ribbon's edges. It only binds on a narrow phone span, where
+   * the humps are short enough that even 15px would tilt too hard.
    */
   const amplitude = Math.min(
-    thickness * 0.9,
+    gsap.utils.clamp(15, 25, thickness * 0.42),
     (Math.max(0, 0.85 - Math.abs(slope)) * width) / (humps * Math.PI),
   );
 
@@ -127,6 +142,26 @@ function bandGeometry(stageW: number, stageH: number) {
   const centres = turningPoints.map(centreAt);
   const top = Math.min(...centres) - thickness / 2;
   const bottom = Math.max(...centres) + thickness / 2;
+
+  if (process.env.NODE_ENV !== "production") {
+    // The end-alignment guarantee, asserted rather than trusted. It rests on
+    // `humps` being a whole number (so the sine is exactly zero at both ends)
+    // and on startY/endY staying derived from the wedge edges. Break either and
+    // this says so, instead of it surfacing as a hairline notch on screen that
+    // only shows up at some viewport sizes.
+    const endsOnAxis = Math.abs(Math.sin(omega * width)) < 1e-9;
+    const leftFlush = Math.abs(centreAt(0) - thickness / 2 - leftEdge) < 1e-6;
+    const rightFlush =
+      Math.abs(centreAt(width) + thickness / 2 - rightEdge) < 1e-6;
+    if (!endsOnAxis || !leftFlush || !rightFlush) {
+      console.error(
+        "[HeroNarrative] the ribbon's ends no longer meet the door wedges. " +
+        "`humps` must stay a whole number, and startY/endY must stay derived " +
+        "from the wedge edges.",
+        { humps, endsOnAxis, leftFlush, rightFlush },
+      );
+    }
+  }
 
   return {
     inset,
@@ -166,7 +201,7 @@ function waveSlope(g: BandGeometry, x: number) {
   return (
     g.slope -
     ((g.amplitude * g.humps * Math.PI) / g.width) *
-      Math.cos((g.humps * Math.PI * x) / g.width)
+    Math.cos((g.humps * Math.PI * x) / g.width)
   );
 }
 
@@ -301,7 +336,7 @@ const GAP_COPY = (
 );
 
 const LEAP_COPY = (
-  <p className="text-[20px] leading-[1.3] font-normal text-ink md:text-[32px]">
+  <p className="text-[20px] leading-[1.3] font-normal text-ink md:text-[52px]">
     until you <span className="text-accent">make the leap</span>
   </p>
 );
