@@ -39,3 +39,31 @@ body {
   font-family: var(--font-zalando), sans-serif;
   line-height: 1.3;
 }
+
+/*
+ * The native scrollbar is hidden and replaced by components/ScrollBar.tsx, which
+ * draws a thumb over the page with no track behind it.
+ *
+ * This is not a styling preference — it is the only way to get a scrollbar the
+ * page shows through. A classic scrollbar's track lives in a gutter *outside* the
+ * viewport's content area, and ScrollSmoother fixes #smooth-wrapper to that
+ * content area, so no section can paint into the gutter. Making the track
+ * `transparent` there falls through to the canvas (this body background), so the
+ * closest a native scrollbar can get is a gutter painted to match whichever
+ * section happens to be on screen — which then has to be re-taught every time a
+ * section arrives in a new colour. Removing the track removes the problem.
+ *
+ * Hidden in CSS rather than by a class the component adds on mount, which would
+ * be the progressive-enhancement move: the swap would land a frame or two after
+ * first paint and shift the whole page ~15px sideways on every load. Nothing is
+ * really lost by committing here, since without JavaScript this site has no
+ * scroll animations, no pinning and no smoother — the scrollbar is the least of
+ * it.
+ */
+html {
+  scrollbar-width: none;
+}
+
+html::-webkit-scrollbar {
+  display: none;
+}

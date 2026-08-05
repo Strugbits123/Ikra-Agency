@@ -6,66 +6,43 @@ import Image from "next/image";
 import { gsap, ScrollTrigger } from "@/lib/gsap";
 import Logo from "./Logo";
 
-/**
- * Drop the reveal footage at this path and set the constant to enable it.
- * Until then the still stands in — same container, same object-fit, so
- * switching is a one-line change with no layout impact.
- */
-const BACKGROUND_VIDEO_SRC: string | null = null;
+// The footage behind the doors. /img/hero-bg.jpg stays underneath it as the base
+// layer rather than being replaced, and this is fetched on an idle callback.
+const BACKGROUND_VIDEO_SRC: string | null = "/video/waves.mp4";
+/** How long to wait for an idle moment before fetching the footage anyway, in ms. */
+const BACKGROUND_VIDEO_IDLE_TIMEOUT = 2500;
+// How far the doors must be open before the footage is worth decoding. Just
+// inside the ~0.28 where the overlapping panels first clear each other.
+const BACKGROUND_VISIBLE_AT_DOOR = 0.25;
 
 /**
- * Where the doors come to rest, as fractions of the viewport. The opening
- * motion itself is the original diagonal one — left down-and-left, right
- * up-and-right — and only the endpoint is new: the panels stop here instead of
- * carrying on out of frame, leaving orange wedges in the bottom-left and
- * top-right corners permanently.
+ * Where the doors come to rest, as fractions of the viewport: they stop here
+ * instead of leaving frame, parking as orange wedges in the bottom-left and
+ * top-right corners. DOOR_REST_X is the one knob for how much orange stays.
  *
- * With a panel DOOR_PANEL_W wide, these land the left panel's inner edge at
- * 29% and its top edge at 48% of the viewport (the right panel mirrors it), so
- * the two wedges straddle the middle of the screen and the band bridges them.
- *
- * DOOR_REST_X is the one knob for how much orange stays on screen: less travel
- * leaves wider wedges and so a shorter span for the ribbon to cross. The
- * ribbon's ends follow automatically — both BAND_INSET and the geometry below
- * are derived from these, never restated — so widening the wedges cannot pull
- * the wave off their corners.
+ * The panels are 58% wide each, so closed they overlap by 16% of the screen and
+ * a gap only appears once doorP passes 8/29 ≈ 0.28 — "the doors are moving" and
+ * "the doors are visibly opening" are different moments, and the copy is cued
+ * off the second (see COPY_LINE_1).
  */
 const DOOR_PANEL_W = 0.58;
 const DOOR_REST_X = 0.29;
 const DOOR_REST_Y = 0.73;
 
-/**
- * The band spans the gap between the doors' resting inner edges — derived from
- * the numbers above rather than restated, so the two cannot drift apart — and
- * tucks 2px under each panel instead of butting against it, so no rounding
- * difference can show a hairline of background between the orange shapes. Same
- * trick the doors already use to overlap each other while closed.
- */
+// Derived from the doors rather than restated, so the two cannot drift apart.
+// Tucks 2px under each panel so no rounding can show a hairline between them.
 const BAND_INSET = `calc(${((DOOR_PANEL_W - DOOR_REST_X) * 100).toFixed(2)}% - 2px)`;
 
 const WAVE_TEXT = "holding your business back";
-/**
- * Gap between repetitions of the phrase. Written as escapes because these are
- * non-breaking spaces on purpose: SVG collapses runs of ordinary whitespace,
- * which would shrink the gap to a single space.
- */
+// Non-breaking on purpose: SVG collapses runs of ordinary whitespace.
 const WAVE_TEXT_GAP = "\u00a0\u00a0\u00a0";
 /** How fast the copy travels right-to-left along the ribbon, in px per second. */
 const MARQUEE_SPEED = 55;
 
 /**
- * The rectangular hole in the orange, expressed as an inset clip on the box the
- * footage sits in: p=0 is fully open, p=1 is sealed.
- *
- * Driving the *window* rather than the box's scale is the whole point. The
- * footage never moves and never changes size — it stays exactly as it opened,
- * and the orange closes over it until the surface is unbroken.
- *
- * The close is horizontal only: the two vertical edges travel inward while the
- * hole keeps its full height the whole way, so it narrows to a tall slit and
- * then to nothing rather than contracting towards its centre. At p=1 the left
- * and right insets are 50% each, i.e. zero width, so it seals outright instead
- * of pinching down to a sliver that needs an opacity dissolve to hide.
+ * The rectangular hole in the orange: p=0 is fully open, p=1 is sealed. Driving
+ * the window rather than the box's scale keeps the footage still. Horizontal
+ * only — the hole holds its full height and narrows to nothing.
  */
 const holeClip = (p: number) => {
   const edge = (p * 50).toFixed(3);
@@ -73,115 +50,119 @@ const holeClip = (p: number) => {
 };
 
 /**
- * How far the hero stays pinned, in vh of actual scrolling. Every phase is
- * expressed in vh of this rather than as a bare 0–1 fraction, so the timeline
- * reads as scroll the user can feel — and so dead scroll is obvious: the last
- * phase ends at 417vh, and everything past that is pinned screen where nothing
- * scroll-driven moves.
- *
- * That tail is 67vh, longer than it would normally be allowed to run, and it is
- * the one place in the sequence where dwell is the point rather than a cost:
- * "until you make the leap" is the closing line, and the moment the pin releases
- * the next section starts climbing over it. The ribbon's marquee also keeps
- * running here on its own timeline, so the screen is never actually still.
- * Shorten it and the closing line goes by unread; lengthen it much further and
- * it will start to read as being stuck.
- *
- * The section is this plus the one viewport the pinned stage itself occupies,
- * because the pin runs `top top` → `bottom bottom`: progress 0→1 covers
- * `height − 100vh`, not the whole height.
+ * The timeline, in vh of actual scrolling through the pin. Written as a chain of
+ * derivations rather than a list of numbers, so retiming any beat carries the
+ * rest along instead of quietly opening a gap or an overlap.
  */
-const PIN_VH = 484;
-const SECTION_VH = PIN_VH + 100;
+
+/** The hole over the footage narrows shut, and the headline fades with it. */
+const SHRINK_VH = 110;
+/** Blank orange: no footage, no copy, nothing but the sealed surface. */
+const BLANK_VH = 20;
+// The doors, and the sequence's spine — the gap copy plays entirely over them,
+// so this window is sized by what the copy needs (see COPY_LINE_1/2).
+const DOOR_AT = SHRINK_VH + BLANK_VH;
+const DOOR_VH = 175;
+const DOOR_END = DOOR_AT + DOOR_VH;
 
 /**
- * The gap copy is a stack: both lines share one seat at the centre of the
- * stage, and the second knocks the first out of it on its way in. At either end
- * of a line's travel it is shrunk to STACK_SCALE, blurred by STACK_BLUR and
- * fully transparent, so the two lines read as one column of type moving through
- * a fixed point.
- *
- * The two distances are deliberately different. A line rises STACK_RISE% of its
- * own height to reach the seat — far enough down that it is clearly travelling
- * up into frame rather than materialising just below where it lands — but only
- * clears STACK_EXIT% on the way out, where the shrink and blur are doing most
- * of the work and a long throw would just read as the line being flung. Give
- * the rise a proportionally longer scroll window than the exit, or the extra
- * distance turns into extra speed instead of extra presence.
- *
- * Arrivals ease out and exits ease in (the same pairing the reference uses), so
- * a line decelerates into the seat and accelerates away from it instead of
- * crossing at a constant rate.
+ * The ribbon's draw-in is the one thing here that is NOT scrubbed: crossing
+ * either end of the span fires a timed tween that runs to completion, so
+ * stopping mid-scroll can never leave half a wave on screen.
  */
-const STACK_RISE = 280;
-const STACK_EXIT = 120;
-const STACK_SCALE = 0.3;
-const STACK_BLUR = 6;
+const BAND_DRAW_AT = DOOR_END;
+const BAND_HOLD_VH = 60;
+const BAND_CLOSE_AT = BAND_DRAW_AT + BAND_HOLD_VH;
+const BAND_DRAW_SECONDS = 0.9;
+const BAND_HIDE_SECONDS = 0.45;
+
+// The closing line takes the space the ribbon just vacated. The 20vh gap past
+// the ribbon's cue guarantees the wave has gone before the line arrives, since
+// the close is a timed tween and the cue can be crossed at speed.
+const LEAP_AT = BAND_CLOSE_AT + 20;
+const LEAP_IN_VH = 32;
+const LEAP_HOLD_VH = 38;
+const LEAP_OUT_AT = LEAP_AT + LEAP_IN_VH + LEAP_HOLD_VH;
+const LEAP_OUT_VH = 32;
+
+// The doors close over the empty stage, retracing their opening exactly because
+// they run on the same progress value scaled back to zero. Quicker than the
+// opening, which had the gap copy to carry.
+const DOOR_CLOSE_AT = LEAP_OUT_AT + LEAP_OUT_VH;
+const DOOR_CLOSE_VH = 125;
+
+/** Pinned screen past the last phase, where nothing scroll-driven moves. */
+const HOLD_VH = 25;
+
+// The pin plus the viewport the pinned stage occupies: the pin runs `top top` →
+// `bottom bottom`, so progress 0→1 covers `height − 100vh`.
+const PIN_VH = DOOR_CLOSE_AT + DOOR_CLOSE_VH + HOLD_VH;
+const SECTION_VH = PIN_VH + 100;
+
+/** 0 before the span, 1 after it, linear in between. */
+const ramp = (p: number, [from, to]: readonly [number, number]) =>
+  gsap.utils.clamp(0, 1, (p - from) / (to - from));
+
+/**
+ * Both lines of the gap copy pass through one seat at the centre of the stage.
+ * The two ends of that travel are deliberately not mirror images: a line settles
+ * into the seat from just below, barely smaller and barely soft, and leaves by
+ * climbing away while shrinking hard and blurring out.
+ *
+ * `y` is a fraction of the viewport height, not of the element, so both lines
+ * travel the same distance despite the second being twice as tall.
+ */
+const STACK_IN_END = { y: 0.08, scale: 0.82, blur: 3 };
+const STACK_OUT_END = { y: -0.12, scale: 0.45, blur: 6 };
 const STACK_IN = gsap.parseEase("power1.out");
 const STACK_OUT = gsap.parseEase("power1.in");
 
 /**
- * Where the heading goes once the second line claims the seat: up out of the
- * way and smaller, but still on screen and still perfectly readable. It is
- * being demoted, not evicted — the two statements belong together, so the pair
- * ends up reading as one composition rather than as two slides.
+ * When each line arrives and leaves, as fractions of the door opening — the copy
+ * is a consequence of the orange parting, so it is measured against it.
  *
- * The shift has to clear the second line's full height, not just its own: both
- * are measured from the same seat centre, so anything less than about −100%
- * leaves the heading's descenders sitting in the second line's first row.
+ * Nothing before 26%, since the panels are only clear of each other at 28% (see
+ * DOOR_PANEL_W) and anything earlier fades up over unbroken orange. The two
+ * middle windows overlap so the exchange reads as one gesture, and the last ends
+ * at 96% so the stage is clear before the doors stop — which is also when the
+ * ribbon starts drawing. Lengthen DOOR_VH to buy back that margin.
  */
-const HEAD_SHIFT_Y = -110;
-const HEAD_SHIFT_SCALE = 0.68;
+const COPY_LINE_1 = { in: [0.26, 0.41], out: [0.56, 0.67] } as const;
+const COPY_LINE_2 = { in: [0.63, 0.75], out: [0.85, 0.96] } as const;
 
 /**
- * How far the doors get before the copy above them has finished leaving. Tying
- * the exit to the doors rather than to a vh window of its own is what keeps the
- * two events one gesture: the copy is carried off *by* the orange breaking
- * apart, and cannot drift out of step with it if either is ever retimed.
- */
-const COPY_EXIT_AT_DOOR = 0.7;
-
-/**
- * One line's state in that stack. `inP` carries it up into the seat from below,
- * `outP` carries it on up and out, and `seatedScale`/`seatedY` describe where it
- * rests in between — which is the only thing the two lines differ on, and what
- * lets the heading be demoted to a smaller seat above the centre instead of
- * having to leave to make room.
+ * One line's state in that seat. `away` is the single travel axis — 1 waiting
+ * below, 0 seated, −1 gone above — and its sign picks which end is being
+ * travelled to, which is the only place the arriving/leaving asymmetry lives.
  *
- * `away` is the single position axis — +1 waiting below, 0 seated, −1 gone
- * above — so a line that is halfway in and a line that is halfway out are
- * described by the same expression rather than by two mirrored branches. Its
- * sign is also what picks the distance, which is the only place the asymmetry
- * between rising in and clearing out lives.
- *
- * The −50 centring is folded into `yPercent` on purpose: driving `yPercent` at
- * all would overwrite a class-based translate the first time it ran, so GSAP
- * has to own both halves of the value.
+ * The −50s are folded into xPercent/yPercent because driving either at all would
+ * overwrite a class-based translate, so GSAP has to own both halves.
  */
-function stackSeat(
-  seatedScale: number,
-  seatedY: number,
-  inP: number,
-  outP: number,
-) {
+function stackSeat(viewportH: number, inP: number, outP: number) {
   const away = 1 - inP - outP;
   const seated = 1 - Math.abs(away);
-  const blur = STACK_BLUR * (1 - seated);
+  const end = away > 0 ? STACK_IN_END : STACK_OUT_END;
+  const blur = end.blur * (1 - seated);
   return {
     xPercent: -50,
-    // The travel is measured from wherever the line is seated, so a line that
-    // has been demoted upward leaves from there rather than snapping back to
-    // the centre first.
-    yPercent: -50 + seatedY + (away > 0 ? STACK_RISE : STACK_EXIT) * away,
-    scale: gsap.utils.interpolate(STACK_SCALE, seatedScale, seated),
+    yPercent: -50,
+    y: end.y * viewportH * Math.abs(away),
+    scale: gsap.utils.interpolate(end.scale, 1, seated),
     opacity: seated,
-    // Dropped entirely once the line is seated rather than left at blur(0):
-    // any filter at all routes the text through a separate rasterisation that
-    // loses subpixel antialiasing, so a nominally zero blur still renders the
-    // copy softer than the rest of the page for the whole time it is readable.
+    // Dropped entirely once seated rather than left at blur(0): any filter at
+    // all costs subpixel antialiasing for the whole time the copy is readable.
     filter: blur > 0.01 ? `blur(${blur.toFixed(2)}px)` : "none",
   };
 }
+
+/**
+ * The ribbon draws in and closes in the same direction, right-to-left, which
+ * pinches the clip at opposite ends — so a closed ribbon is parked at the wrong
+ * end to open from and has to be moved back first (see `drawBand`).
+ */
+const BAND_CLIP_UNDRAWN = "inset(0% 0% 0% 100%)";
+const BAND_CLIP_FULL = "inset(0% 0% 0% 0%)";
+const BAND_CLIP_CLOSED = "inset(0% 100% 0% 0%)";
 
 /** Gap between the ribbon's box and the closing line beneath it, in px. */
 const LEAP_GAP = 56;
@@ -191,69 +172,47 @@ const SAMPLES_PER_HUMP = 3;
 /**
  * Everything about the ribbon, derived from the stage it sits on.
  *
- * The whole thing is arranged so both ends land EXACTLY on the door wedges'
- * inner corners: the left cap's top edge on the left wedge's top edge, the
- * right cap's bottom edge on the right wedge's bottom edge. That is achieved by
- * describing the centre line as a straight baseline between those two anchor
- * points plus a sine — because sin() is zero at both ends for any whole number
- * of half waves, the oscillation never disturbs where the ends actually land,
- * no matter how pronounced it gets. Amplitude and hump count are therefore free
- * to be tuned for looks without ever reopening a gap.
+ * Both ends must land exactly on the door wedges' inner corners. That works
+ * because the centre line is a straight baseline between those two anchor points
+ * plus a sine: sin() is zero at both ends for any whole number of half waves, so
+ * amplitude and hump count are free to be tuned without reopening a gap.
  */
 function bandGeometry(stageW: number, stageH: number) {
-  // Matches BAND_INSET, so the ribbon spans the gap and tucks 2px under each
-  // wedge horizontally.
+  // Matches BAND_INSET, so the ribbon tucks 2px under each wedge horizontally.
   const inset = (DOOR_PANEL_W - DOOR_REST_X) * stageW - 2;
   const width = stageW - inset * 2;
 
   // The wedges' horizontal edges. The left wedge exists only *below* its top
-  // edge, the right wedge only *above* its bottom edge — which is exactly why
-  // the ends have to be pinned rather than merely overlapped.
+  // edge and the right only *above* its bottom edge, which is why the ends have
+  // to be pinned rather than merely overlapped.
   const leftEdge = (DOOR_REST_Y - 0.25) * stageH;
   const rightEdge = (1.25 - DOOR_REST_Y) * stageH;
 
-  // Scales faster than the span now that the wedges are wider and the span is
-  // shorter, so the copy inside doesn't shrink with it.
+  // Scales faster than the span, so the copy inside doesn't shrink with it.
   const thickness = gsap.utils.clamp(44, 76, width * 0.072);
   const fontSize = thickness * 0.55;
-  /**
-   * Half waves across the span; each one is a visible crest or trough. Must
-   * stay a whole number — that is what puts sin() at exactly zero on both ends
-   * and so pins the ribbon to the wedge corners.
-   */
+  // Half waves across the span. Must stay a whole number — that is what puts
+  // sin() at exactly zero on both ends and pins the ribbon to the wedges.
   const humps = Math.round(gsap.utils.clamp(3, 8, width / 165));
 
-  // Centre line at each end, offset half a thickness inward so it is the ribbon
-  // *edges* that meet the wedge corners.
+  // Offset half a thickness inward so it is the ribbon *edges* that meet the
+  // wedge corners.
   const startY = leftEdge + thickness / 2;
   const endY = rightEdge - thickness / 2;
   const slope = (endY - startY) / width;
 
-  /**
-   * Deliberately gentle: held to 15–25px so the crests read clearly without
-   * overwhelming the copy riding on them. The second term is a safety ceiling
-   * rather than the usual driver — a sine's steepest slope is A·humps·π/width,
-   * and past roughly 40° the glyphs (which rotate with the path) begin pushing
-   * out through the ribbon's edges. It only binds on a narrow phone span, where
-   * the humps are short enough that even 15px would tilt too hard.
-   */
+  // Held to 15–25px for a gentle wave. The second term is a safety ceiling:
+  // glyphs rotate with the path, so past roughly 40° they push out through the
+  // ribbon's edges. It only binds on a narrow phone span.
   const amplitude = Math.min(
     gsap.utils.clamp(15, 25, thickness * 0.42),
     (Math.max(0, 0.85 - Math.abs(slope)) * width) / (humps * Math.PI),
   );
 
-  /**
-   * Solved rather than assumed. Because the baseline tilts, the wave's true
-   * extremes are NOT `min/max(startY, endY) ± amplitude` — a sine peak lands
-   * where the baseline has already risen part way, so that guess leaves dead
-   * space in the box and makes `height` (and so the LEAP_GAP measured from it)
-   * lie about where the ribbon really ends.
-   *
-   * c'(x) = slope − A·ω·cos(ωx), so the turning points are wherever
-   * cos(ωx) = slope/(A·ω). Checking those plus the two ends gives the exact
-   * extent — a sampled scan would undershoot it by a fraction of a pixel and
-   * clip the tip of the sharpest crest.
-   */
+  // Solved, not sampled. The baseline tilts, so the extremes are not
+  // `min/max(startY, endY) ± amplitude`: c'(x) = slope − A·ω·cos(ωx), so the
+  // turning points are wherever cos(ωx) = slope/(A·ω). A sampled scan
+  // undershoots by a fraction of a pixel and clips the sharpest crest.
   const omega = (humps * Math.PI) / width;
   const centreAt = (x: number) =>
     startY + slope * x - amplitude * Math.sin(omega * x);
@@ -274,11 +233,8 @@ function bandGeometry(stageW: number, stageH: number) {
   const bottom = Math.max(...centres) + thickness / 2;
 
   if (process.env.NODE_ENV !== "production") {
-    // The end-alignment guarantee, asserted rather than trusted. It rests on
-    // `humps` being a whole number (so the sine is exactly zero at both ends)
-    // and on startY/endY staying derived from the wedge edges. Break either and
-    // this says so, instead of it surfacing as a hairline notch on screen that
-    // only shows up at some viewport sizes.
+    // The end-alignment guarantee, asserted rather than trusted — otherwise a
+    // break surfaces as a hairline notch at only some viewport sizes.
     const endsOnAxis = Math.abs(Math.sin(omega * width)) < 1e-9;
     const leftFlush = Math.abs(centreAt(0) - thickness / 2 - leftEdge) < 1e-6;
     const rightFlush =
@@ -305,11 +261,8 @@ function bandGeometry(stageW: number, stageH: number) {
     endY,
     top,
     height: bottom - top,
-    /**
-     * Drops the baseline below the centre line so the copy's visual mass, not
-     * its baseline, rides the wave. Done in the path to avoid `dy` on a
-     * textPath, which browsers disagree about.
-     */
+    // Drops the baseline so the copy's visual mass rides the wave. Done in the
+    // path to avoid `dy` on a textPath, which browsers disagree about.
     baselineShift: fontSize * 0.3,
   };
 }
@@ -336,11 +289,9 @@ function waveSlope(g: BandGeometry, x: number) {
 }
 
 /**
- * One traversal of the wave as Hermite-matched cubics. `yOffset` shifts the
- * whole run, which is how both edges of the ribbon come from a single wave, and
- * `reverse` walks it back right-to-left to close the outline — retracing the
- * *same* curve rather than mirroring it, so the edges stay parallel and the
- * ribbon holds one thickness throughout.
+ * One traversal of the wave as Hermite-matched cubics. `yOffset` shifts the whole
+ * run, which is how both edges come from a single wave, and `reverse` retraces
+ * the *same* curve so the edges stay parallel and the thickness stays constant.
  */
 function waveRun(g: BandGeometry, yOffset: number, reverse: boolean) {
   const n = g.humps * SAMPLES_PER_HUMP;
@@ -361,11 +312,7 @@ function waveRun(g: BandGeometry, yOffset: number, reverse: boolean) {
 const bandTextPath = (g: BandGeometry) =>
   `M 0 ${waveY(g, 0) + g.baselineShift} ${waveRun(g, g.baselineShift, false)}`;
 
-/**
- * The ribbon: the same wave offset up and down by half its thickness. Its two
- * straight end caps sit at x=0 and x=width, and because of how startY/endY were
- * chosen they land flush against the wedges' corners.
- */
+/** The ribbon: the same wave offset up and down by half its thickness. */
 const bandOutlinePath = (g: BandGeometry) => {
   const half = g.thickness / 2;
   return [
@@ -378,22 +325,20 @@ const bandOutlinePath = (g: BandGeometry) => {
 };
 
 /**
- * Slim orange ribbon spanning the gap between the doors, with the copy running
- * along its wave and marqueeing right-to-left forever.
+ * Slim orange ribbon spanning the gap between the doors, with the copy
+ * marqueeing right-to-left along its wave forever.
  *
- * The copy sits on an SVG textPath rather than being split into positioned
- * spans, which is what tilts each character tangent to the wave, and it makes
- * containment structural instead of a padding calculation: a glyph that ran
- * past either end of the path simply isn't rendered.
+ * The copy rides an SVG textPath rather than positioned spans, which is what
+ * tilts each character tangent to the wave and makes containment structural: a
+ * glyph past either end simply isn't rendered.
  */
 function WavyBand({ g, animate }: { g: BandGeometry; animate: boolean }) {
   const textPathRef = useRef<SVGTextPathElement>(null);
-  // Sanitised: useId's output contains colons, which are legal in an id but
-  // awkward in a URL fragment.
+  // Sanitised: useId's output contains colons, awkward in a URL fragment.
   const pathId = `band-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
 
-  // Enough repetitions to overfill the path, so there is still copy arriving at
-  // the right-hand end after a full repetition has scrolled off the left.
+  // Enough repetitions to overfill the path, so copy is still arriving at the
+  // right-hand end after a full repetition has scrolled off the left.
   const repeats = Math.max(
     2,
     Math.ceil(g.width / (WAVE_TEXT.length * g.fontSize * 0.55)) + 2,
@@ -407,7 +352,7 @@ function WavyBand({ g, animate }: { g: BandGeometry; animate: boolean }) {
     let cancelled = false;
 
     // Measure only once the webfont has settled: a fallback-font measurement
-    // would make the loop length wrong and put a visible jump in every repeat.
+    // makes the loop length wrong and puts a visible jump in every repeat.
     document.fonts.ready.then(() => {
       if (cancelled) return;
       const oneRepeat = textPath.getComputedTextLength() / repeats;
@@ -455,15 +400,13 @@ function WavyBand({ g, animate }: { g: BandGeometry; animate: boolean }) {
 }
 
 /**
- * `overlay` stacks the two lines in the same seat at the centre of the stage,
- * one on top of the other, which is what lets the second take the first's place
- * rather than sit beneath it. Laying them out is left entirely to GSAP — see
- * `stackSeat` — since the animation drives `yPercent` and would overwrite any
- * translate-based centring the classes tried to apply.
+ * `overlay` stacks the two lines in the same seat at the centre of the stage, so
+ * the second takes the first's place rather than sitting beneath it. Positioning
+ * is left entirely to GSAP (see `stackSeat`), which drives `yPercent` and would
+ * overwrite any translate-based centring from the classes.
  *
- * Without it the two simply stack in normal flow, which is the reduced-motion
- * rendering: no GSAP touches them there, so they need to be readable as they
- * are, and nothing may depend on a transform ever being written.
+ * Without it they stack in normal flow, which is the reduced-motion rendering:
+ * no GSAP touches them there, so nothing may depend on a transform being written.
  */
 function GapCopy({
   overlay = false,
@@ -474,94 +417,78 @@ function GapCopy({
   headRef?: Ref<HTMLParagraphElement>;
   subRef?: Ref<HTMLParagraphElement>;
 }) {
+  // One class string for both: they are two halves of one statement in the same
+  // seat, so any difference in size or weight reads as a replacement rather than
+  // the sentence carrying on. The max-width only fixes where the longer line
+  // wraps; GSAP centres on the element's own width, so it stays centred.
+  const line = `w-full max-w-[1500px] text-[40px] leading-[1.15] font-medium text-ink md:text-[80px]`;
   const seat = overlay
-    ? "absolute top-1/2 left-1/2 w-full px-8 text-center"
+    ? "absolute top-1/2 left-1/2 px-8 text-center"
     : "";
   return (
     <>
-      <p
-        ref={headRef}
-        className={`${seat} text-[45px] leading-[1.15] font-medium text-ink md:text-[94.6px]`}
-      >
+      <p ref={headRef} className={`${seat} ${line}`}>
         growth creates a gap
       </p>
-      <p
-        ref={subRef}
-        className={`${seat} ${overlay ? "" : "mt-5"} max-w-2xl text-[22px] leading-[1.3] font-light text-ink/80 md:text-[35.6px]`}
-      >
+      <p ref={subRef} className={`${seat} ${overlay ? "" : "mt-5"} ${line}`}>
         between who you&apos;ve become and how the world sees you
       </p>
     </>
   );
 }
 
-/**
- * Deliberately wider than the gap it is centred in, and `whitespace-nowrap` so
- * it stays one line and overhangs rather than wrapping into a stack. The
- * overhang is the point: at this height the bottom-left wedge is still orange,
- * so the opening "un" runs onto it and the line reads as crossing the whole
- * composition instead of being boxed inside the gap.
- */
+// Roughly how many ems wide the closing line is, so its size can be solved from
+// the span between the wedges rather than picked — widen the wedges and the line
+// shrinks to suit. Rounded up, so the error lands as a margin either side.
+const LEAP_EMS = 14;
+
+// `whitespace-nowrap` because the size is solved for this width; wrapping would
+// only ever mean the fit is wrong. Size comes from the container (see LEAP_EMS).
 const LEAP_COPY = (
-  <p className="text-[26px] leading-[1.3] font-normal whitespace-nowrap text-ink md:text-[82px]">
+  <p className="leading-[1.3] text-3xl md:text-[60px] font-normal whitespace-nowrap text-ink">
     until you <span className="font-bold text-accent">make the leap</span>
   </p>
 );
 
 /**
- * One continuous pinned sequence — no seam between "hero" and "reveal"
- * because there is no second section: it's all one sticky stage and one
- * scrubbed ScrollTrigger, so scrolling back up reverses every phase.
+ * One continuous pinned sequence — one stage, one scrubbed ScrollTrigger, so
+ * scrolling back up reverses every phase.
  *
  * Phases, in vh of actual scrolling through the pin (see PIN_VH):
  *    0–110vh  the rectangular hole the footage is seen through narrows shut.
- *             The footage itself never moves or resizes, and the hole keeps
- *             its full height throughout — only its two vertical edges travel
- *             inward, so it closes to a tall slit and then to nothing. The hero
- *             headline fades on the very same driver, so it is completely gone
- *             at the instant the hole seals: one event, not two.
- *  110–130vh  empty. Both the footage and the opening headline are gone and
- *             nothing has replaced them yet, so the screen is one unbroken
- *             orange surface carrying no copy at all. A short, deliberate beat
- *             — long enough to land as a clean break between the two
- *             statements, short enough not to read as the page having stalled.
- *  130–158vh  "growth creates a gap" grows into place as it fades up on that
- *             orange, ink on orange, taking the seat at the centre of the
- *             stage that both lines of this copy share.
- *  158–184vh  it holds there, for about as long as the blank beat that preceded
- *             it, so the pauses on either side of its arrival match.
- *  184–220vh  the second line rises out of the bottom of the frame and takes
- *             the seat, while the heading steps up and shrinks to make room
- *             instead of being pushed off — it stays on screen and readable, so
- *             the two statements end up standing together. One window, both
- *             lines moving, so it reads as a handoff. The longest window here,
- *             because the rise covers STACK_RISE, well over twice STACK_EXIT.
- *  220–252vh  both hold, the pair readable together.
- *  252–305vh  the two leave as one — driven by the doors below rather than by a
- *             window of their own, so the copy is carried off *by* the orange
- *             breaking apart and cannot drift out of step with it. Gone by the
- *             time the doors are COPY_EXIT_AT_DOOR of the way open.
- *  252–327vh  the doors open diagonally, exactly as they always did (right
- *             up-and-right, left down-and-left), but stop partway instead of
- *             leaving — orange wedges stay in the bottom-left and top-right
- *             corners for good.
- *  302–352vh  the wavy orange ribbon draws itself in from right to left (a
- *             clip, not a fade), bridging the two resting wedges so ribbon and
- *             doors read as one continuous form. Kept to 50vh so a single
- *             scroll completes it.
- *  367–417vh  "until you make the leap" fades in below the ribbon.
- *  417–484vh  hold on the finished composition. Nothing scroll-driven moves,
- *             but this is dwell rather than dead scroll: the closing line needs
- *             to be read before the pin releases, and the moment it does the
- *             next section starts climbing over it. The ribbon's copy also
- *             marquees along the wave here on its own timeline, so the screen
- *             is never actually still. See PIN_VH.
+ *             The footage never moves or resizes. The headline fades on the same
+ *             driver, so it is gone at the instant the hole seals.
+ *  110–130vh  empty — one unbroken orange surface, a clean break between the two
+ *             statements.
+ *  130–305vh  the doors open diagonally (right up-and-right, left down-and-left)
+ *             and stop partway, leaving wedges in the bottom-left and top-right
+ *             corners for good. The gap copy plays over them, its beats being
+ *             fractions of this window (see COPY_LINE_1/2):
+ *              +0–30%  no copy — the panels overlap until 28%, so there is
+ *                      nothing to see yet.
+ *             +30–41%  "growth creates a gap" fades up into the centre seat.
+ *             +41–56%  it holds while the orange keeps parting.
+ *             +56–67%  it climbs away, shrinking and blurring out.
+ *             +63–75%  the second line rises into the same seat as the first
+ *                      leaves it; the overlap is what makes it one gesture.
+ *             +75–85%  it holds.
+ *             +85–96%  it climbs away, clearing the stage before the doors stop.
+ *  305–365vh  the wavy ribbon draws in right-to-left (a clip, not a fade),
+ *             bridging the two wedges, then closes the same way round. Neither
+ *             half is scroll-driven — see BAND_DRAW_AT.
+ *  385–417vh  "until you make the leap" fades up into the space the ribbon
+ *             vacated, at the same seat and sized to the same span.
+ *  417–455vh  it holds.
+ *  455–487vh  it climbs away. The stage is now empty.
+ *  487–612vh  the doors close over it, retracing their opening exactly.
+ *  612–637vh  a short hold on the closed orange surface before the pin releases.
  *
- * Then the pin releases and DefinitionSection takes over. The 100vh handoff
- * between the two pins is snapped — see the `handoff` trigger in that file.
+ * Then DefinitionSection takes over, dissolving the seam against flat orange.
  *
- * Layering (back to front): background image/video, the orange doors, the
- * wavy band and its copy, then the header and hero copy above everything.
+ * Layering (back to front): the background still with the footage over it, the
+ * wavy band, the doors, then the header and hero copy. The band sits *under* the
+ * doors deliberately — both are the same orange, but it means a ribbon caught
+ * mid-close is swallowed by the returning panels instead of floating over them.
  */
 export default function HeroNarrative() {
   const sectionRef = useRef<HTMLElement>(null);
@@ -577,11 +504,19 @@ export default function HeroNarrative() {
   const cursorRef = useRef<HTMLDivElement>(null);
   const logoRef = useRef<HTMLSpanElement>(null);
   const headlineRef = useRef<HTMLParagraphElement>(null);
+  const bgVideoRef = useRef<HTMLVideoElement>(null);
+  const bgCoveredRef = useRef(false);
+  const clipVideoRef = useRef<HTMLVideoElement>(null);
+  const clipSealedRef = useRef(false);
   const introDoneRef = useRef(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [mounted, setMounted] = useState(false);
-  // The ribbon's placement is pinned to the door wedges' corners, so it needs
-  // the stage's real size — both axes — not just its own width.
+  // Null until the browser has a spare moment (see the effect below);
+  // `bgPlaying` then fades the footage over the still once it has frames.
+  const [bgSrc, setBgSrc] = useState<string | null>(null);
+  const [bgPlaying, setBgPlaying] = useState(false);
+  // The ribbon is pinned to the wedges' corners, so it needs both axes of the
+  // stage's real size, not just its width.
   const [stageBox, setStageBox] = useState({ w: 0, h: 0 });
 
   useEffect(() => {
@@ -606,10 +541,33 @@ export default function HeroNarrative() {
     setMounted(true);
   }, []);
 
+  /**
+   * Fetch the background footage once the browser is idle. Nothing behind the
+   * doors is visible for the first SHRINK_VH + BLANK_VH of the pin plus a
+   * quarter of the door window, so loading it with the page would only put
+   * several megabytes up against the assets that are actually on screen.
+   *
+   * Skipped under reduced motion, where the doors start parked open and
+   * autoplaying footage would be unrequested motion on arrival.
+   */
+  useEffect(() => {
+    if (!mounted || reducedMotion || !BACKGROUND_VIDEO_SRC) return;
+    const start = () => setBgSrc(BACKGROUND_VIDEO_SRC);
+
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(start, {
+        timeout: BACKGROUND_VIDEO_IDLE_TIMEOUT,
+      });
+      return () => window.cancelIdleCallback(id);
+    }
+    // Safari has no requestIdleCallback; a plain timeout is close enough for
+    // something with this much slack.
+    const id = window.setTimeout(start, 1200);
+    return () => window.clearTimeout(id);
+  }, [mounted, reducedMotion]);
+
   // Load sequence (plays once, not scroll-driven): the hole opens up over the
-  // footage, then the headline fades in. Opening the *window* rather than
-  // scaling the box is the same move the scroll phase reverses, so the footage
-  // is at its final size from the very first frame either way.
+  // footage, then the headline fades in.
   useEffect(() => {
     if (!mounted) return;
     const box = videoBoxRef.current;
@@ -617,11 +575,10 @@ export default function HeroNarrative() {
     if (!box || !headline) return;
 
     if (reducedMotion) {
-      // No ScrollTrigger runs in this mode, so nothing would ever reveal the
-      // centre copy. It renders as a plain static column instead (see the JSX),
-      // which needs no GSAP at all — only the clip and the hero headline, both
-      // of which exist purely to be animated, have to be hidden here.
-      gsap.set(headline, { opacity: 0 });
+      // No ScrollTrigger runs in this mode, so only the clip and the hero
+      // headline — which exist purely to be animated — are hidden here. The
+      // centre copy renders as a plain static column instead (see the JSX).
+      gsap.set(headline, { xPercent: -50, yPercent: -50, opacity: 0 });
       gsap.set(box, { opacity: 0 });
       introDoneRef.current = true;
       return;
@@ -631,21 +588,43 @@ export default function HeroNarrative() {
       // Only the clip window is animated here, never a transform, so the
       // Tailwind translate classes keep doing the centering untouched.
       gsap.set(box, { clipPath: holeClip(1) });
-      gsap.set(headline, { opacity: 0, y: 16 });
+      // GSAP owns the headline's centring and the classes deliberately don't:
+      // the first transform GSAP writes replaces the whole inline transform, so
+      // a class-based `-translate-y-1/2` would be wiped the instant `y` is
+      // touched, dropping the line half its height as it fades in.
+      gsap.set(headline, { xPercent: -50, yPercent: -50, opacity: 0, y: 16 });
 
-      gsap
-        .timeline({
-          delay: 0.2,
-          onComplete: () => {
-            introDoneRef.current = true;
-          },
-        })
-        .to(box, { clipPath: holeClip(0), duration: 0.9, ease: "power3.out" })
-        .to(
-          headline,
-          { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" },
-          "-=0.3",
-        );
+      let cancelled = false;
+      // Held until the webfont has settled. `display: swap` means the first
+      // paint is in the fallback face, and fading in across that metrics change
+      // is the other half of the flicker. Waiting costs a few ms and the swap
+      // happens while the headline is still fully transparent.
+      document.fonts.ready.then(() => {
+        if (cancelled) return;
+        ctx.add(() => {
+          gsap
+            .timeline({
+              delay: 0.2,
+              onComplete: () => {
+                introDoneRef.current = true;
+              },
+            })
+            .to(box, {
+              clipPath: holeClip(0),
+              duration: 0.9,
+              ease: "power3.out",
+            })
+            .to(
+              headline,
+              { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" },
+              "-=0.3",
+            );
+        });
+      });
+
+      return () => {
+        cancelled = true;
+      };
     });
 
     return () => ctx.revert();
@@ -659,160 +638,189 @@ export default function HeroNarrative() {
     if (!section || !box) return;
 
     const ctx = gsap.context(() => {
+      // The ribbon's draw-in, kept off the scrub entirely (see BAND_DRAW_AT).
+      // `shown` is the latched state, so crossing the cue fires the tween once
+      // rather than restarting it on every scroll event past it.
+      let shown = false;
+      let bandTween: gsap.core.Tween | null = null;
+      function drawBand(show: boolean) {
+        const el = wavyRef.current;
+        // Bailing before the latch flips matters: the ribbon only mounts once
+        // the stage has been measured, so an early cue is retried, not swallowed.
+        if (!el || show === shown) return;
+        shown = show;
+        const midFlight = bandTween?.isActive() ?? false;
+        bandTween?.kill();
+        // A finished close leaves the clip pinched at the opposite end from
+        // undrawn (see BAND_CLIP_*), so it has to be moved back before it can
+        // draw again — safe only because nothing is on screen then. `midFlight`
+        // catches a close still running, where the draw instead reverses out of
+        // wherever it got to.
+        if (show && !midFlight) gsap.set(el, { clipPath: BAND_CLIP_UNDRAWN });
+        bandTween = gsap.to(el, {
+          clipPath: show ? BAND_CLIP_FULL : BAND_CLIP_CLOSED,
+          duration: show ? BAND_DRAW_SECONDS : BAND_HIDE_SECONDS,
+          ease: show ? "power2.out" : "power2.in",
+          overwrite: "auto",
+        });
+      }
+
       const trigger = ScrollTrigger.create({
         trigger: section,
         start: "top top",
         end: "bottom bottom",
         scrub: 1,
-        // Plain CSS `sticky` does not work here: ScrollSmoother fakes
-        // scrolling by translating #smooth-content via a transform rather
-        // than a real scroll offset, and `sticky` never engages without an
-        // actual scrolling ancestor. GSAP's own pin sets position:fixed via
-        // JS and is scroll-implementation-agnostic, so it works regardless.
+        // CSS `sticky` does not work here: ScrollSmoother fakes scrolling with a
+        // transform on #smooth-content, and `sticky` never engages without a
+        // real scrolling ancestor. GSAP's pin sets position:fixed via JS.
         pin: stageRef.current,
         pinSpacing: false,
         onUpdate(self) {
           // ScrollTrigger fires an onUpdate at creation; without this guard it
-          // would snap the clip straight to its resting size, cutting the
+          // would snap the clip straight to its resting size and cut the
           // entrance animation short.
           if (!introDoneRef.current) return;
 
           // Progress as real scroll distance through the pin, in vh, so each
-          // phase below reads as "from here to here" in scroll the user can
-          // feel, and retiming one cannot silently shift the rest.
+          // phase reads as "from here to here" in scroll the user can feel.
           const vh = self.progress * PIN_VH;
           const W = document.documentElement.clientWidth;
           const H = window.innerHeight;
 
           // --- Phase 1: the hole narrows shut over the footage (0 – 110vh) ---
-          // The box is not scaled and not moved: what closes is the window it
-          // is seen through, and only in width — the hole holds its full height
-          // the whole way, so the footage keeps its size and position while the
-          // orange behind eats into it from the left and right edges. A
-          // clip costs no layout work, needs no re-measuring across resizes,
-          // and picks up exactly where the entrance timeline's open left off.
-          const shrinkP = gsap.utils.clamp(0, 1, vh / 110);
+          // The box is neither scaled nor moved — only the window it is seen
+          // through closes, and only in width. A clip costs no layout work and
+          // picks up where the entrance timeline's open left off.
+          const shrinkP = ramp(vh, [0, SHRINK_VH]);
           gsap.set(box, { clipPath: holeClip(shrinkP) });
 
-          // The headline rides that same driver rather than a window of its
-          // own, so the two are synced by construction: the copy is completely
-          // gone at the exact moment the hole seals.
+          // Same driver rather than a window of its own, so the copy is gone at
+          // the exact moment the hole seals.
           gsap.set(headlineRef.current, { opacity: 1 - shrinkP });
 
-          // The logo ends up sitting over the revealed background, so it goes
-          // ink → white as the hole seals — well before the doors part. (This
-          // used to be driven by the clip passing behind the logo, which can't
-          // happen now that the clip never moves.)
+          // Nothing of this footage is on screen for the remaining five-plus
+          // viewports of the pin. Latched on a ref rather than the element's own
+          // `paused`, since play() is asynchronous.
+          const clip = clipVideoRef.current;
+          if (clip) {
+            const sealed = shrinkP >= 1;
+            if (sealed !== clipSealedRef.current) {
+              clipSealedRef.current = sealed;
+              if (sealed) clip.pause();
+              else void clip.play().catch(() => {});
+            }
+          }
+
+          // The logo ends up over the revealed background, so it goes ink →
+          // white straddling the seal — a change of surface rather than a third
+          // event queued behind the other two.
           gsap.set(logoRef.current, {
             backgroundColor: gsap.utils.interpolate(
               "#390303",
               "#ffffff",
-              gsap.utils.clamp(0, 1, (vh - 90) / 50),
+              ramp(vh, [SHRINK_VH - 20, SHRINK_VH + 30]),
             ),
           });
 
-          // --- Phase 2: blank orange (110 – 130vh) — nothing is on screen but
-          // the sealed surface itself. There is no code for it: it exists
-          // because the phase before finished at 110 and the one after does not
-          // begin until 130, and it stays empty only as long as that gap.
+          // --- Phase 2: blank orange (110 – 130vh) — no code, it exists because
+          // the phase before ended at SHRINK_VH and the next begins at DOOR_AT.
 
-          // --- Phase 3: the gap copy runs through the seat (130 – 305vh) ---
-          // Both lines share one seat at the centre of the stage (see
-          // stackSeat). The heading takes it first and is then demoted rather
-          // than displaced: it steps up and shrinks to make room, stays
-          // readable, and the two end up on screen together as one composition.
-          // Each arrival holds long enough to be read — the holds are as much
-          // of the sequence as the moves are.
-          //
-          // 130–158  the heading grows into place, still the plain grow-and-fade
-          //          it always was: it is the first thing in the seat, so it has
-          //          nothing to displace and does not need the travel.
-          // 158–184  it holds. Roughly the length of the blank beat before it,
-          //          so the pause on either side of its arrival matches.
-          // 184–220  the second line rises out of the bottom of the frame into
-          //          the seat while the heading steps up and back out of its
-          //          way. One window, both lines moving, so it reads as a
-          //          handoff. Longer than the exit because the rise covers
-          //          STACK_RISE rather than STACK_EXIT, and the extra distance
-          //          should buy presence rather than speed.
-          // 220–252  both hold, the pair readable together.
-          // 252–305  they leave as one, on the doors rather than on a window of
-          //          their own — gone by the time the orange is
-          //          COPY_EXIT_AT_DOOR broken apart beneath them.
-          const headP = gsap.utils.clamp(0, 1, (vh - 130) / 28);
-          const handoff = gsap.utils.clamp(0, 1, (vh - 184) / 36);
+          // --- Phase 3: the doors, and the copy that plays over them ---
+          // `doorP` is the spine of everything to 305vh: the panels move on it,
+          // and every copy beat is a fraction of it (COPY_LINE_1/2), so the two
+          // can never drift out of step however the window is retuned.
+          const doorP = ramp(vh, [DOOR_AT, DOOR_END]);
 
-          // Computed here rather than down in the doors' own phase, because the
-          // copy's exit is driven by it.
-          const doorP = gsap.utils.clamp(0, 1, (vh - 252) / 75);
-          const exitP = STACK_OUT(
-            gsap.utils.clamp(0, 1, doorP / COPY_EXIT_AT_DOOR),
-          );
-
+          // Both lines climb through the same centre seat, the second rising
+          // into it as the first leaves upward (see stackSeat).
           gsap.set(
             gapHeadRef.current,
-            // inP=1 throughout: it arrived by growing in place rather than by
-            // rising, so scroll only ever demotes it and then takes it out.
             stackSeat(
-              (0.8 + 0.2 * headP) *
-                gsap.utils.interpolate(1, HEAD_SHIFT_SCALE, handoff),
-              HEAD_SHIFT_Y * handoff,
-              1,
-              exitP,
+              H,
+              STACK_IN(ramp(doorP, COPY_LINE_1.in)),
+              STACK_OUT(ramp(doorP, COPY_LINE_1.out)),
             ),
           );
-          gsap.set(gapSubRef.current, stackSeat(1, 0, STACK_IN(handoff), exitP));
+          gsap.set(
+            gapSubRef.current,
+            stackSeat(
+              H,
+              STACK_IN(ramp(doorP, COPY_LINE_2.in)),
+              STACK_OUT(ramp(doorP, COPY_LINE_2.out)),
+            ),
+          );
 
-          // The container carries only the initial fade-up, on the heading's
-          // window. Both lines leave under their own power, so there is no
-          // fade-out here to fight them — and holding the fade-in at this level
-          // is still what stops either line showing before the first onUpdate
-          // has had a chance to seat them.
-          gsap.set(contentRef.current, { opacity: headP });
+          // Each line owns its own opacity, so the container's only job is to
+          // stay hidden until the first onUpdate has seated them.
+          gsap.set(contentRef.current, { opacity: 1 });
 
-          // --- Phase 4: doors open diagonally, then stop (252 – 327vh) ---
-          // The original motion, unchanged in character: each panel slides out
-          // while drifting vertically, with the drift finishing ahead of the
-          // slide (hence `drift` running on doorP/0.7). The only difference is
-          // where it ends — at DOOR_REST_*, so both panels stay on screen as
-          // corner wedges instead of carrying on out of frame. `doorP` itself
-          // is computed up in phase 3, which needs it to drive the copy's exit.
-          const drift = gsap.utils.clamp(0, 1, doorP / 0.7);
+          // The panels, opening on doorP (130 – 305vh) and closing again at the
+          // end (487 – 612vh). Each slides out while drifting vertically, the
+          // drift finishing ahead of the slide (hence `/0.7`).
+          //
+          // The close is not a second animation: `doorNow` is the opening's own
+          // progress scaled back to zero, so the panels retrace the exact path
+          // they came out on. Note the copy rides `doorP`, not this — it must
+          // stay gone while the doors return, not play itself backwards.
+          const closeP = ramp(vh, [DOOR_CLOSE_AT, DOOR_CLOSE_AT + DOOR_CLOSE_VH]);
+          const doorNow = doorP * (1 - closeP);
+          const drift = gsap.utils.clamp(0, 1, doorNow / 0.7);
           gsap.set(panelLeftRef.current, {
-            x: -doorP * W * DOOR_REST_X,
+            x: -doorNow * W * DOOR_REST_X,
             y: drift * H * DOOR_REST_Y,
           });
           gsap.set(panelRightRef.current, {
-            x: doorP * W * DOOR_REST_X,
+            x: doorNow * W * DOOR_REST_X,
             y: -drift * H * DOOR_REST_Y,
           });
 
-          // --- Phase 5: the ribbon draws itself in, right to left (302–352vh) ---
-          // A clip rather than a fade, so it reads as the wave travelling
-          // across the gap. It grows out of the top-right wedge towards the
-          // bottom-left one, which is the same direction the copy runs along
-          // it. Deliberately a tight window — 50vh — so one continuous scroll
-          // takes it from nothing to full width instead of needing several.
-          const drawP = gsap.utils.clamp(0, 1, (vh - 302) / 50);
-          gsap.set(wavyRef.current, {
-            clipPath: `inset(0 0 0 ${(1 - drawP) * 100}%)`,
-          });
+          // A 1080p decode is not free, so the footage only runs while some of
+          // it can be seen — which covers both ends of the sequence. Latched on
+          // a ref because play() is asynchronous: `paused` would still read true
+          // on the next frame and this would call play() every frame until it
+          // resolved.
+          const bg = bgVideoRef.current;
+          if (bg) {
+            const covered = doorNow < BACKGROUND_VISIBLE_AT_DOOR;
+            if (covered !== bgCoveredRef.current) {
+              bgCoveredRef.current = covered;
+              if (covered) bg.pause();
+              // Rejects if the browser declines to autoplay, which is not
+              // something to act on: the still underneath is the fallback.
+              else void bg.play().catch(() => {});
+            }
+          }
 
-          // --- Phase 6: the closing line follows it (367 – 417vh) ---
-          gsap.set(leapRef.current, {
-            opacity: gsap.utils.clamp(0, 1, (vh - 367) / 50),
-          });
+          // --- Phase 4: the ribbon draws in, holds, and clears (305 – 365vh) ---
+          // Not scrubbed: each end of the span fires a tween that runs to
+          // completion on its own clock, so the wedges are always at rest before
+          // it starts and it can never be left frozen half-drawn. Expressed as a
+          // span so it behaves the same crossed either way.
+          drawBand(vh >= BAND_DRAW_AT && vh < BAND_CLOSE_AT);
 
-          // --- Phase 7: hold (417 – 484vh) — nothing scroll-driven changes.
-          // Two thirds of a screen of dwell on the finished composition, which
-          // is what buys the closing line time to be read: the pin releasing is
-          // also DefinitionSection starting to climb over it, so any beat the
-          // line gets has to come from here. The ribbon's marquee carries on
-          // under its own timeline throughout, so the screen is never still.
+          // --- Phase 5: the closing line takes its place (385 – 487vh) ---
+          // Seated where the ribbon was, not below it, so the wave resolves into
+          // the words. Same seat mechanism as the gap copy, and by the time it
+          // has climbed away the stage is empty for the doors to close over.
+          gsap.set(
+            leapRef.current,
+            stackSeat(
+              H,
+              STACK_IN(ramp(vh, [LEAP_AT, LEAP_AT + LEAP_IN_VH])),
+              STACK_OUT(ramp(vh, [LEAP_OUT_AT, LEAP_OUT_AT + LEAP_OUT_VH])),
+            ),
+          );
+
+          // --- Phase 6: the doors close (487 – 612vh), driven above, then a
+          // short hold (612 – 637vh) on unbroken orange before the pin releases.
         },
       });
 
-      return () => trigger.kill();
+      return () => {
+        // Created inside onUpdate, so the context never collected it.
+        bandTween?.kill();
+        trigger.kill();
+      };
     }, section);
 
     return () => ctx.revert();
@@ -858,6 +866,8 @@ export default function HeroNarrative() {
       className="relative bg-accent [&_*]:!cursor-none cursor-none"
       style={{ height: reducedMotion ? "100vh" : `${SECTION_VH}vh` }}
     >
+      {/* Portaled out because `position: fixed` does not work inside
+          ScrollSmoother's transformed #smooth-content. */}
       {mounted &&
         !reducedMotion &&
         createPortal(
@@ -869,41 +879,52 @@ export default function HeroNarrative() {
           document.body,
         )}
 
-      {/* GSAP pins this element directly (see the ScrollTrigger below) rather
-          than relying on CSS `sticky`, which does not work here — see the
-          note by the ScrollTrigger config for why. `relative` still gives
-          next/image `fill` something to resolve against before pinning
-          kicks in (and in the reduced-motion path, where nothing pins it). */}
+      {/* GSAP pins this element directly (see the ScrollTrigger above); CSS
+          `sticky` does not work here. `relative` still gives next/image `fill`
+          something to resolve against before pinning kicks in. */}
       <div ref={stageRef} className="relative h-screen w-full overflow-hidden">
         <div className="relative h-full w-full">
-          {/* Background reveal, always present, uncovered once the doors move. */}
-          {BACKGROUND_VIDEO_SRC ? (
+          {/* Background reveal, uncovered once the doors move. The still and the
+            footage are layered rather than swapped: the still covers the stretch
+            before the idle callback fires, the reduced-motion path, and an
+            outright playback failure.
+
+            No `priority`, and no `poster` on the video either — both would
+            preload for a first frame that cannot be seen for a viewport of
+            scrolling, and the poster once pointed at this same 5184px source. */}
+          <Image
+            src="/img/hero-bg.jpg"
+            alt="Misty coastal cliffs at dawn"
+            fill
+            className="object-cover"
+            sizes="100vw"
+          />
+
+          {bgSrc && (
             <video
-              className="absolute inset-0 z-0 h-full w-full object-cover"
-              src={BACKGROUND_VIDEO_SRC}
-              poster="/img/hero-bg.jpg"
+              ref={bgVideoRef}
+              // Fades over the still on its first frame rather than cutting,
+              // which matters for a visitor arriving at a restored scroll
+              // position with the doors already open.
+              className={`absolute inset-0 z-0 h-full w-full object-cover transition-opacity duration-700 ${
+                bgPlaying ? "opacity-100" : "opacity-0"
+              }`}
+              src={bgSrc}
               autoPlay
               muted
               loop
               playsInline
-            />
-          ) : (
-            <Image
-              src="/img/hero-bg.jpg"
-              alt="Misty coastal cliffs at dawn"
-              fill
-              priority
-              className="object-cover"
-              sizes="100vw"
+              preload="auto"
+              // Decorative: the still below carries the alt text.
+              aria-hidden
+              onPlaying={() => setBgPlaying(true)}
             />
           )}
 
-          {/* Orange doors. Oversized so the closed state fully overlaps (no
-            seam) and so the diagonal drift never exposes a panel's short edge,
-            sitting under the clip until it shrinks away, then opening to
-            DOOR_REST_* and staying put as corner wedges. In reduced motion
-            they are rendered already parked — the same offsets expressed in
-            vw/vh, since there is no ScrollTrigger to drive them. */}
+          {/* Orange doors. Oversized so the closed state fully overlaps and the
+            diagonal drift never exposes a panel's short edge. In reduced motion
+            they render already parked — the same offsets in vw/vh, since there
+            is no ScrollTrigger to drive them. */}
           <div
             ref={panelLeftRef}
             className="absolute -top-1/4 left-0 z-10 h-[150%] bg-accent"
@@ -925,25 +946,34 @@ export default function HeroNarrative() {
             }}
           />
 
-          {/* The footage, seen through a rectangular hole in the orange. The
-            box never moves or resizes — only its clip does, narrowing over a
-            still image of fixed size until nothing is left but the closed
-            doors behind it, so the screen simply "becomes orange". Starting
-            sealed (rather than with a `scale-0` class) is what keeps it from
-            flashing before the entrance animation opens it. */}
+          {/* The footage, seen through a rectangular hole in the orange. The box
+            never moves or resizes — only its clip does. Starting sealed rather
+            than with a `scale-0` class is what keeps it from flashing before the
+            entrance animation opens it. */}
           <div
             ref={videoBoxRef}
             className="absolute top-1/2 left-1/2 z-20 h-[78vh] w-[15vw] max-w-75 min-w-35 -translate-x-1/2 -translate-y-1/2 overflow-hidden"
             style={{ clipPath: holeClip(1) }}
           >
+            {/* Not /video/section2.mp4, which is kept alongside as the master:
+              that is 1920×1080 and 18.5MB, and this box is at most 300px wide,
+              so `object-cover` was discarding ~80% of every decoded frame. This
+              is the same footage pre-cropped to the strip that shows, centred
+              where object-cover already centred it, at 480×1080 and 3.53MB.
+
+              `poster` is a plain URL, so it bypasses next/image and is served at
+              whatever size it is on disk. It is now the video's own first frame
+              at 36KB, so the handoff to playback is invisible. */}
             <video
+              ref={clipVideoRef}
               className="absolute inset-0 h-full w-full object-cover"
-              src="/video/section2.mp4"
-              poster="/img/section2-bg.jpg"
+              src="/video/section2-vertical.mp4"
+              poster="/img/section2-poster.jpg"
               autoPlay
               muted
               loop
               playsInline
+              preload="auto"
             />
           </div>
 
@@ -955,9 +985,13 @@ export default function HeroNarrative() {
             />
           </header>
 
+          {/* No translate-centring classes on purpose: GSAP animates `y` here
+            and owns xPercent/yPercent instead, in both motion modes. Safe to
+            leave uncentred for the frame before that runs because `opacity-0`
+            starts it hidden. */}
           <p
             ref={headlineRef}
-            className="absolute top-1/2 left-1/2 z-30 w-full max-w-5xl -translate-x-1/2 -translate-y-1/2 px-8 text-center text-[32px] leading-[1.3] font-light text-white/80 opacity-0 md:text-[52px] lg:max-w-[1300px] lg:text-[68px]"
+            className="absolute top-1/2 left-1/2 z-30 w-full max-w-5xl px-8 text-center text-[32px] leading-[1.3] font-light text-white/80 opacity-0 md:text-[52px] lg:max-w-[1300px] lg:text-[68px]"
           >
             eventually, success becomes your
             <br />
@@ -970,9 +1004,9 @@ export default function HeroNarrative() {
           />
 
           {reducedMotion && (
-            /* Nothing animates here, so the opening copy — which the scrolled
-               version fades out — has to live somewhere it won't collide with
-               the ribbon, which is pinned to the wedges in both modes. */
+            /* Nothing animates here, so the opening copy has to live where it
+               won't collide with the ribbon, which is pinned to the wedges in
+               both modes. */
             <div className="absolute inset-x-8 top-[10%] z-20 text-center md:inset-x-16">
               <GapCopy />
             </div>
@@ -993,35 +1027,48 @@ export default function HeroNarrative() {
           {band && (
             <>
               {/* Placed at the geometry's own `top`, not centred, because its
-                ends have to meet the wedge corners exactly. The clip is what
-                draws it in right-to-left on scroll; reduced motion just shows
-                it whole. */}
+                ends have to meet the wedge corners exactly.
+
+                Sits *below* the doors (z-5 against z-10), which changes nothing
+                about the finished composition but does mean panels sliding back
+                in on an upward scroll cover a ribbon that is still closing
+                rather than leaving it on top of the orange. */}
               <div
                 ref={wavyRef}
-                className="pointer-events-none absolute z-20"
+                className="pointer-events-none absolute z-[5]"
                 style={{
                   left: BAND_INSET,
                   right: BAND_INSET,
                   top: band.top,
-                  clipPath: reducedMotion ? undefined : "inset(0 0 0 100%)",
+                  clipPath: reducedMotion ? undefined : BAND_CLIP_UNDRAWN,
                 }}
               >
                 <WavyBand g={band} animate={!reducedMotion} />
               </div>
 
-              {/* Centred on the stage itself rather than boxed inside the
-                band's inset, because this line is deliberately wider than that
-                gap. Sized to its own content and pulled back half its width,
-                so its midpoint is the screen's midpoint at any font size and
-                the overhang is always even on both sides — a fixed box with
-                centred text distributes overflow far less predictably, which
-                is what made it drift right as the type grew. GSAP only ever
-                writes `opacity` here, so the translate survives. */}
+              {/* Centred on the stage rather than boxed inside the band's inset,
+                because this line is deliberately wider than that gap: sized to
+                its own content and pulled back half its width, so its midpoint
+                is the screen's at any font size and the overhang stays even.
+
+                On the ribbon's centre line, since it takes over that space once
+                the ribbon clears — and sized to the span between the wedges (see
+                LEAP_EMS) so it sits between them. The clamp stops it shrinking
+                below the phone size, where the span is far too narrow to fit it.
+
+                Translate-centring is GSAP's here (xPercent, from stackSeat), not
+                the class list's. Reduced motion has no GSAP, so it keeps the
+                class and stays below the band — where it must be, since the
+                ribbon is drawn in full there and never clears. */}
               <div
                 ref={leapRef}
-                className="pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 text-center"
+                className={`pointer-events-none absolute left-1/2 z-20 text-center ${reducedMotion ? "-translate-x-1/2" : ""
+                  }`}
                 style={{
-                  top: band.top + band.height + LEAP_GAP,
+                  top: reducedMotion
+                    ? band.top + band.height + LEAP_GAP
+                    : band.top + band.height / 2,
+                  fontSize: gsap.utils.clamp(26, 82, band.width / LEAP_EMS),
                   opacity: reducedMotion ? 1 : 0,
                 }}
               >
