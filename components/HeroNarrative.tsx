@@ -81,8 +81,8 @@ const BAND_LEAD_VH = 25;
 const BAND_DRAW_AT = DOOR_END + BAND_LEAD_VH;
 const BAND_HOLD_VH = 60;
 const BAND_CLOSE_AT = BAND_DRAW_AT + BAND_HOLD_VH;
-const BAND_DRAW_SECONDS = 1.8;
-const BAND_HIDE_SECONDS = 1.1;
+const BAND_DRAW_SECONDS = 0.9;
+const BAND_HIDE_SECONDS = 0.5;
 
 // The closing line takes the space the ribbon just vacated. The 35vh gap past the
 // ribbon's cue guarantees the wave has gone before the line arrives, since the
@@ -771,7 +771,7 @@ export default function HeroNarrative() {
             if (sealed !== clipSealedRef.current) {
               clipSealedRef.current = sealed;
               if (sealed) clip.pause();
-              else void clip.play().catch(() => {});
+              else void clip.play().catch(() => { });
             }
           }
 
@@ -851,7 +851,7 @@ export default function HeroNarrative() {
               if (covered) bg.pause();
               // Rejects if the browser declines to autoplay, which is not
               // something to act on: the still underneath is the fallback.
-              else void bg.play().catch(() => {});
+              else void bg.play().catch(() => { });
             }
           }
 
@@ -975,9 +975,8 @@ export default function HeroNarrative() {
               // Fades over the still on its first frame rather than cutting,
               // which matters for a visitor arriving at a restored scroll
               // position with the doors already open.
-              className={`absolute inset-0 z-0 h-full w-full object-cover transition-opacity duration-700 ${
-                bgPlaying ? "opacity-100" : "opacity-0"
-              }`}
+              className={`absolute inset-0 z-0 h-full w-full object-cover transition-opacity duration-700 ${bgPlaying ? "opacity-100" : "opacity-0"
+                }`}
               src={bgSrc}
               autoPlay
               muted
