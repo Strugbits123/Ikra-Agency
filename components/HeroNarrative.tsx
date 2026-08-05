@@ -82,14 +82,23 @@ const BAND_HIDE_SECONDS = 0.45;
 const LEAP_AT = BAND_CLOSE_AT + 20;
 const LEAP_IN_VH = 32;
 const LEAP_HOLD_VH = 38;
-const LEAP_OUT_AT = LEAP_AT + LEAP_IN_VH + LEAP_HOLD_VH;
-const LEAP_OUT_VH = 32;
 
-// The doors close over the empty stage, retracing their opening exactly because
-// they run on the same progress value scaled back to zero. Quicker than the
-// opening, which had the gap copy to carry.
-const DOOR_CLOSE_AT = LEAP_OUT_AT + LEAP_OUT_VH;
+// The doors close as soon as the line has finished holding, retracing their
+// opening exactly because they run on the same progress value scaled back to
+// zero. Quicker than the opening, which had the gap copy to carry.
+const DOOR_CLOSE_AT = LEAP_AT + LEAP_IN_VH + LEAP_HOLD_VH;
 const DOOR_CLOSE_VH = 125;
+
+// The doorP below which the panels overlap and the stage reads as unbroken
+// orange: they are DOOR_PANEL_W wide each, so their 16% overlap covers the gap
+// before they have finished travelling. Closing, that lands at 72% of the way.
+const DOOR_SEALED_AT = (2 * DOOR_PANEL_W - 1) / (2 * DOOR_REST_X);
+
+// The line leaves *with* the doors rather than before them, receding as the orange
+// closes in (see leapSeat). Sized so its scale reaches zero exactly as the panels
+// meet — past that it would be shrinking against a surface already sealed.
+const LEAP_OUT_AT = DOOR_CLOSE_AT;
+const LEAP_OUT_VH = DOOR_CLOSE_VH * (1 - DOOR_SEALED_AT);
 
 /** Pinned screen past the last phase, where nothing scroll-driven moves. */
 const HOLD_VH = 25;
@@ -121,14 +130,21 @@ const STACK_OUT = gsap.parseEase("power1.in");
  * When each line arrives and leaves, as fractions of the door opening — the copy
  * is a consequence of the orange parting, so it is measured against it.
  *
- * Nothing before 26%, since the panels are only clear of each other at 28% (see
- * DOOR_PANEL_W) and anything earlier fades up over unbroken orange. The two
- * middle windows overlap so the exchange reads as one gesture, and the last ends
- * at 96% so the stage is clear before the doors stop — which is also when the
- * ribbon starts drawing. Lengthen DOOR_VH to buy back that margin.
+ * Nothing before 26%, since the panels are only clear of each other at
+ * DOOR_SEALED_AT (~28%) and anything earlier fades up over unbroken orange. The
+ * last window ends at 96%, so the stage is clear before the doors stop — which is
+ * also when the ribbon starts drawing.
+ *
+ * The exchange in the middle — the first line's exit overlapping the second's
+ * arrival — is deliberately the slowest beat here: it spans 27% of the window
+ * against 14% for the first line's arrival, so the handover reads as one
+ * unhurried gesture rather than a swap. It is paid for out of the two holds,
+ * which is the only place available: both ends of the window are fixed by the
+ * overlap below and the ribbon above, so the alternative is lengthening DOOR_VH,
+ * and that slows the doors themselves.
  */
-const COPY_LINE_1 = { in: [0.26, 0.41], out: [0.56, 0.67] } as const;
-const COPY_LINE_2 = { in: [0.63, 0.75], out: [0.85, 0.96] } as const;
+const COPY_LINE_1 = { in: [0.26, 0.40], out: [0.51, 0.68] } as const;
+const COPY_LINE_2 = { in: [0.60, 0.78], out: [0.87, 0.96] } as const;
 
 /**
  * One line's state in that seat. `away` is the single travel axis — 1 waiting
@@ -151,6 +167,36 @@ function stackSeat(viewportH: number, inP: number, outP: number) {
     opacity: seated,
     // Dropped entirely once seated rather than left at blur(0): any filter at
     // all costs subpixel antialiasing for the whole time the copy is readable.
+    filter: blur > 0.01 ? `blur(${blur.toFixed(2)}px)` : "none",
+  };
+}
+
+/**
+ * The closing line's own seat. It arrives exactly as the gap copy does — fading
+ * up from just below the seat, barely smaller — but it leaves by *receding*: the
+ * opacity holds at 1 and the scale runs all the way to zero, with no rise and no
+ * blur, so it reads as being drawn back through the gap the doors are closing
+ * rather than dissolving where it stands.
+ *
+ * The recession has to be linear in the raw scroll ramp, which is why this cannot
+ * reuse STACK_OUT (power1.in): the line is as wide as the gap it sits in, and the
+ * panels are closing on it at a known rate, so anything that shrinks slower than
+ * linear leaves its ends hanging over the orange. That matters more than it
+ * sounds — `text-accent` is the panels' own colour, so those words would vanish
+ * against them while the ink half stayed visible, at full opacity now that
+ * nothing fades. Linear beats the panels everywhere: the line's width falls by
+ * 0.42·p of the viewport against the gap's 0.30·p, so it is inside the gap for
+ * every frame of the close and reaches nothing exactly as they meet.
+ */
+function leapSeat(viewportH: number, inP: number, outP: number) {
+  const arriving = 1 - inP;
+  const blur = STACK_IN_END.blur * arriving;
+  return {
+    xPercent: -50,
+    yPercent: -50,
+    y: STACK_IN_END.y * viewportH * arriving,
+    scale: gsap.utils.interpolate(STACK_IN_END.scale, 1, inP) * (1 - outP),
+    opacity: inP,
     filter: blur > 0.01 ? `blur(${blur.toFixed(2)}px)` : "none",
   };
 }
@@ -466,22 +512,25 @@ const LEAP_COPY = (
  *             fractions of this window (see COPY_LINE_1/2):
  *              +0–30%  no copy — the panels overlap until 28%, so there is
  *                      nothing to see yet.
- *             +30–41%  "growth creates a gap" fades up into the centre seat.
- *             +41–56%  it holds while the orange keeps parting.
- *             +56–67%  it climbs away, shrinking and blurring out.
- *             +63–75%  the second line rises into the same seat as the first
- *                      leaves it; the overlap is what makes it one gesture.
- *             +75–85%  it holds.
- *             +85–96%  it climbs away, clearing the stage before the doors stop.
+ *             +26–40%  "growth creates a gap" fades up into the centre seat.
+ *             +40–51%  it holds while the orange keeps parting.
+ *             +51–68%  it climbs away, shrinking and blurring out.
+ *             +60–78%  the second line rises into the same seat as the first
+ *                      leaves it; the overlap is what makes it one gesture, and
+ *                      both ramps are slow on purpose (see COPY_LINE_1/2).
+ *             +78–87%  it holds.
+ *             +87–96%  it climbs away, clearing the stage before the doors stop.
  *  305–365vh  the wavy ribbon draws in right-to-left (a clip, not a fade),
  *             bridging the two wedges, then closes the same way round. Neither
  *             half is scroll-driven — see BAND_DRAW_AT.
  *  385–417vh  "until you make the leap" fades up into the space the ribbon
  *             vacated, at the same seat and sized to the same span.
  *  417–455vh  it holds.
- *  455–487vh  it climbs away. The stage is now empty.
- *  487–612vh  the doors close over it, retracing their opening exactly.
- *  612–637vh  a short hold on the closed orange surface before the pin releases.
+ *  455–580vh  the doors close, retracing their opening exactly. The line recedes
+ *             across the first 90vh of that — scaling to nothing at full opacity,
+ *             never fading — and reaches zero exactly as the panels meet
+ *             (~545vh), so it goes back through the gap rather than dissolving.
+ *  580–605vh  a short hold on the closed orange surface before the pin releases.
  *
  * Then DefinitionSection takes over, dissolving the seam against flat orange.
  *
@@ -798,21 +847,26 @@ export default function HeroNarrative() {
           // span so it behaves the same crossed either way.
           drawBand(vh >= BAND_DRAW_AT && vh < BAND_CLOSE_AT);
 
-          // --- Phase 5: the closing line takes its place (385 – 487vh) ---
+          // --- Phase 5: the closing line takes its place (385 – 545vh) ---
           // Seated where the ribbon was, not below it, so the wave resolves into
-          // the words. Same seat mechanism as the gap copy, and by the time it
-          // has climbed away the stage is empty for the doors to close over.
+          // the words. It arrives like the gap copy but recedes instead of fading
+          // (see leapSeat), scaling to nothing across the door close so it reads
+          // as going back through the gap the panels are shutting.
+          //
+          // The exit takes the raw ramp deliberately — no STACK_OUT. The eased
+          // version holds the line near full size early, which is exactly when
+          // the panels are already advancing on it.
           gsap.set(
             leapRef.current,
-            stackSeat(
+            leapSeat(
               H,
               STACK_IN(ramp(vh, [LEAP_AT, LEAP_AT + LEAP_IN_VH])),
-              STACK_OUT(ramp(vh, [LEAP_OUT_AT, LEAP_OUT_AT + LEAP_OUT_VH])),
+              ramp(vh, [LEAP_OUT_AT, LEAP_OUT_AT + LEAP_OUT_VH]),
             ),
           );
 
-          // --- Phase 6: the doors close (487 – 612vh), driven above, then a
-          // short hold (612 – 637vh) on unbroken orange before the pin releases.
+          // --- Phase 6: the doors close (455 – 580vh), driven above, then a
+          // short hold (580 – 605vh) on unbroken orange before the pin releases.
         },
       });
 
@@ -1056,7 +1110,7 @@ export default function HeroNarrative() {
                 LEAP_EMS) so it sits between them. The clamp stops it shrinking
                 below the phone size, where the span is far too narrow to fit it.
 
-                Translate-centring is GSAP's here (xPercent, from stackSeat), not
+                Translate-centring is GSAP's here (xPercent, from leapSeat), not
                 the class list's. Reduced motion has no GSAP, so it keeps the
                 class and stays below the band — where it must be, since the
                 ribbon is drawn in full there and never clears. */}
