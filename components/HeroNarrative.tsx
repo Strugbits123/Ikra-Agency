@@ -479,7 +479,7 @@ function GapCopy({
   // seat, so any difference in size or weight reads as a replacement rather than
   // the sentence carrying on. The max-width only fixes where the longer line
   // wraps; GSAP centres on the element's own width, so it stays centred.
-  const line = `w-full max-w-[1500px] text-[40px] leading-[1.15] font-medium text-ink md:text-[80px]`;
+  const line = `w-full max-w-[1500px] text-[40px] leading-[1.15] font-medium text-ink md:text-[60px]`;
   const seat = overlay
     ? "absolute top-1/2 left-1/2 px-8 text-center"
     : "";
