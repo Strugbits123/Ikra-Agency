@@ -69,17 +69,26 @@ const DOOR_END = DOOR_AT + DOOR_VH;
  * The ribbon's draw-in is the one thing here that is NOT scrubbed: crossing
  * either end of the span fires a timed tween that runs to completion, so
  * stopping mid-scroll can never leave half a wave on screen.
+ *
+ * BAND_LEAD_VH is dead scroll between the doors coming to rest and the wave
+ * starting, and it is what keeps the wave and the gap copy off each other's
+ * screen. Because both tweens run on their own clock, a fast scroll can cross a
+ * cue while one is still playing — and scrolling *up*, the close is racing the
+ * second gap line back on. This margin is the guarantee, so it has to stay at
+ * least as long as BAND_HIDE_SECONDS takes to scroll through.
  */
-const BAND_DRAW_AT = DOOR_END;
+const BAND_LEAD_VH = 25;
+const BAND_DRAW_AT = DOOR_END + BAND_LEAD_VH;
 const BAND_HOLD_VH = 60;
 const BAND_CLOSE_AT = BAND_DRAW_AT + BAND_HOLD_VH;
-const BAND_DRAW_SECONDS = 0.9;
-const BAND_HIDE_SECONDS = 0.45;
+const BAND_DRAW_SECONDS = 1.8;
+const BAND_HIDE_SECONDS = 1.1;
 
-// The closing line takes the space the ribbon just vacated. The 20vh gap past
-// the ribbon's cue guarantees the wave has gone before the line arrives, since
-// the close is a timed tween and the cue can be crossed at speed.
-const LEAP_AT = BAND_CLOSE_AT + 20;
+// The closing line takes the space the ribbon just vacated. The 35vh gap past the
+// ribbon's cue guarantees the wave has gone before the line arrives, since the
+// close is a timed tween and the cue can be crossed at speed. Sized against
+// BAND_HIDE_SECONDS, so it grows if the close is slowed further.
+const LEAP_AT = BAND_CLOSE_AT + 35;
 const LEAP_IN_VH = 32;
 const LEAP_HOLD_VH = 38;
 
@@ -131,20 +140,23 @@ const STACK_OUT = gsap.parseEase("power1.in");
  * is a consequence of the orange parting, so it is measured against it.
  *
  * Nothing before 26%, since the panels are only clear of each other at
- * DOOR_SEALED_AT (~28%) and anything earlier fades up over unbroken orange. The
- * last window ends at 96%, so the stage is clear before the doors stop — which is
- * also when the ribbon starts drawing.
+ * DOOR_SEALED_AT (~28%) and anything earlier fades up over unbroken orange.
  *
- * The exchange in the middle — the first line's exit overlapping the second's
- * arrival — is deliberately the slowest beat here: it spans 27% of the window
- * against 14% for the first line's arrival, so the handover reads as one
- * unhurried gesture rather than a swap. It is paid for out of the two holds,
- * which is the only place available: both ends of the window are fixed by the
- * overlap below and the ribbon above, so the alternative is lengthening DOOR_VH,
- * and that slows the doors themselves.
+ * The last window now runs to 100% — the doors coming to rest — rather than
+ * stopping short of the wave. It can, because BAND_LEAD_VH puts dead scroll
+ * between the two: the copy owns the whole door opening and the wave starts after
+ * it, so they cannot share the screen in either direction.
+ *
+ * Both slow beats here are deliberate. The first line's arrival takes 22% of the
+ * window, nearly half again the exits, because it is the one the eye is waiting
+ * for and a fast scroll made it pop in. The exchange in the middle — line 1's
+ * exit overlapping line 2's arrival — spans 27%, so the handover reads as one
+ * unhurried gesture rather than a swap. Both are paid for out of the holds, which
+ * is the only place available: lengthening DOOR_VH would buy more, but it slows
+ * the doors themselves.
  */
-const COPY_LINE_1 = { in: [0.26, 0.40], out: [0.51, 0.68] } as const;
-const COPY_LINE_2 = { in: [0.60, 0.78], out: [0.87, 0.96] } as const;
+const COPY_LINE_1 = { in: [0.26, 0.48], out: [0.56, 0.73] } as const;
+const COPY_LINE_2 = { in: [0.65, 0.83], out: [0.91, 1.0] } as const;
 
 /**
  * One line's state in that seat. `away` is the single travel axis — 1 waiting
@@ -510,27 +522,30 @@ const LEAP_COPY = (
  *             and stop partway, leaving wedges in the bottom-left and top-right
  *             corners for good. The gap copy plays over them, its beats being
  *             fractions of this window (see COPY_LINE_1/2):
- *              +0–30%  no copy — the panels overlap until 28%, so there is
+ *              +0–26%  no copy — the panels overlap until 28%, so there is
  *                      nothing to see yet.
- *             +26–40%  "growth creates a gap" fades up into the centre seat.
- *             +40–51%  it holds while the orange keeps parting.
- *             +51–68%  it climbs away, shrinking and blurring out.
- *             +60–78%  the second line rises into the same seat as the first
+ *             +26–48%  "growth creates a gap" fades up into the centre seat,
+ *                      slowly — this is the beat a fast scroll used to rush.
+ *             +48–56%  it holds while the orange keeps parting.
+ *             +56–73%  it climbs away, shrinking and blurring out.
+ *             +65–83%  the second line rises into the same seat as the first
  *                      leaves it; the overlap is what makes it one gesture, and
  *                      both ramps are slow on purpose (see COPY_LINE_1/2).
- *             +78–87%  it holds.
- *             +87–96%  it climbs away, clearing the stage before the doors stop.
- *  305–365vh  the wavy ribbon draws in right-to-left (a clip, not a fade),
+ *             +83–91%  it holds.
+ *            +91–100%  it climbs away, clearing the stage as the doors stop.
+ *  305–330vh  dead scroll, so the copy is gone before the wave starts and the
+ *             wave is gone before the copy comes back (see BAND_LEAD_VH).
+ *  330–390vh  the wavy ribbon draws in right-to-left (a clip, not a fade),
  *             bridging the two wedges, then closes the same way round. Neither
  *             half is scroll-driven — see BAND_DRAW_AT.
- *  385–417vh  "until you make the leap" fades up into the space the ribbon
+ *  425–457vh  "until you make the leap" fades up into the space the ribbon
  *             vacated, at the same seat and sized to the same span.
- *  417–455vh  it holds.
- *  455–580vh  the doors close, retracing their opening exactly. The line recedes
+ *  457–495vh  it holds.
+ *  495–620vh  the doors close, retracing their opening exactly. The line recedes
  *             across the first 90vh of that — scaling to nothing at full opacity,
  *             never fading — and reaches zero exactly as the panels meet
- *             (~545vh), so it goes back through the gap rather than dissolving.
- *  580–605vh  a short hold on the closed orange surface before the pin releases.
+ *             (~585vh), so it goes back through the gap rather than dissolving.
+ *  620–645vh  a short hold on the closed orange surface before the pin releases.
  *
  * Then DefinitionSection takes over, dissolving the seam against flat orange.
  *
@@ -840,14 +855,14 @@ export default function HeroNarrative() {
             }
           }
 
-          // --- Phase 4: the ribbon draws in, holds, and clears (305 – 365vh) ---
+          // --- Phase 4: the ribbon draws in, holds, and clears (330 – 390vh) ---
           // Not scrubbed: each end of the span fires a tween that runs to
           // completion on its own clock, so the wedges are always at rest before
           // it starts and it can never be left frozen half-drawn. Expressed as a
           // span so it behaves the same crossed either way.
           drawBand(vh >= BAND_DRAW_AT && vh < BAND_CLOSE_AT);
 
-          // --- Phase 5: the closing line takes its place (385 – 545vh) ---
+          // --- Phase 5: the closing line takes its place (425 – 585vh) ---
           // Seated where the ribbon was, not below it, so the wave resolves into
           // the words. It arrives like the gap copy but recedes instead of fading
           // (see leapSeat), scaling to nothing across the door close so it reads
@@ -865,8 +880,8 @@ export default function HeroNarrative() {
             ),
           );
 
-          // --- Phase 6: the doors close (455 – 580vh), driven above, then a
-          // short hold (580 – 605vh) on unbroken orange before the pin releases.
+          // --- Phase 6: the doors close (495 – 620vh), driven above, then a
+          // short hold (620 – 645vh) on unbroken orange before the pin releases.
         },
       });
 
