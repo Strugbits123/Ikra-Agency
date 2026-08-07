@@ -56,10 +56,58 @@ const DICT_VH = 250;
 const MARK_LEAD_VH = 15;
 const MARK_VH = 50;
 
-/** Hold on the finished composition before the pin releases into the footer. */
+/** Hold on the finished composition once the definition has fully cleared. */
 const HOLD_VH = 30;
 
-const PIN_VH = DICT_AT + DICT_VH + HOLD_VH;
+/**
+ * The wordmark dissolves in place — letterforms only. The three dots are
+ * separate solid elements sitting exactly on top of the artwork's own, so what
+ * the eye sees is the "ikra." melting away and leaving its dots behind, hanging
+ * in mid-air. Nothing is masked or cut out; the dots simply outlast the thing
+ * they came from.
+ */
+const LOGO_FADE_AT = DICT_AT + DICT_VH + HOLD_VH;
+const LOGO_FADE_VH = 60;
+
+/**
+ * The camera onto the footer.
+ *
+ * The footer is not animated. It is the second screen of a track inside the
+ * pinned stage, and PAN is the camera moving down onto it — measured, so it
+ * comes to rest with the footer's bottom edge on the viewport's. That is the
+ * whole reason it is built this way: a camera move is indistinguishable from
+ * ordinary page scroll, so the footer arrives without a fade, a slide, or any
+ * entrance of its own.
+ *
+ * It has to be *finished* before the earliest dot touches down, which is what
+ * sizes it against DROP_AT below. The dots fall to where the columns come to
+ * rest, so a column still creeping upward underneath one is a dot landing on a
+ * moving floor. The binding case is a phone, where the stacked footer makes the
+ * first two falls short and quick.
+ */
+const PAN_AT = LOGO_FADE_AT + LOGO_FADE_VH;
+const PAN_VH = 62;
+
+/**
+ * The fall. DROP_AT is 18vh after the wordmark has gone, so there is a beat with
+ * the three dots alone on the screen before anything lets go of them — and it is
+ * also the margin that keeps every landing clear of the camera.
+ *
+ * DROP_VH is the *longest* fall's window, not every fall's: each dot's own
+ * window is scaled down from it in proportion to how long its trajectory takes,
+ * which is what puts all three under one gravity rather than three (see
+ * planFall). DROPS_END is therefore an upper bound — it is exact only on the
+ * viewport where the last dot to leave also has the furthest to go.
+ */
+const DROP_AT = PAN_AT + 18;
+const DROP_VH = 170;
+const DROP_STAGGER_VH = 14;
+const DROPS_END = DROP_AT + 2 * DROP_STAGGER_VH + DROP_VH;
+
+/** A beat on the finished footer before the pin releases. */
+const FOOTER_HOLD_VH = 34;
+
+const PIN_VH = DROPS_END + FOOTER_HOLD_VH;
 const SECTION_VH = PIN_VH + 100;
 
 /**
@@ -84,6 +132,190 @@ const VEIL_VH = HERO_TAIL_VH + 100;
  * fractional pixels so the rounding lands differently frame to frame.
  */
 const VEIL_OVERHANG_PX = 4;
+
+/**
+ * Where the wordmark's three dots sit inside its own box — the tittle on the
+ * "i", the terminal on the "r", and the full stop. Measured off the alpha
+ * channel of public/img/logo-white.png (each is a separate connected shape in
+ * it), so they are exact rather than eyeballed: `cx` and `d` are fractions of
+ * the wordmark's width, `cy` a fraction of its height. The mask is `contain` and
+ * the box carries the asset's own aspect ratio, so the artwork fills it exactly
+ * and these map straight onto the rendered element.
+ *
+ * Left to right, they map onto footer columns 1, 2, 3.
+ */
+const LOGO_DOTS = [
+  { cx: 0.04708, cy: 0.11494, d: 0.09443 },
+  { cx: 0.58527, cy: 0.45083, d: 0.09417 },
+  { cx: 0.95082, cy: 0.88442, d: 0.09443 },
+] as const;
+
+/**
+ * The footer's type, sized against the viewport rather than fixed.
+ *
+ * It is the one block on the page with nothing above it, so on a large screen a
+ * px-sized version reads as a small notice stranded at the bottom. Scaling with
+ * vw keeps it the same *share* of the screen everywhere. FOOTER_DOT_SIZE is also
+ * the size each falling dot settles at.
+ */
+const FOOTER_DOT_SIZE = "clamp(24px, 2.4vw, 36px)";
+const FOOTER_HEADING_SIZE = "clamp(19px, 1.9vw, 34px)";
+const FOOTER_BODY_SIZE = "clamp(13px, 1.1vw, 19px)";
+
+/** Soft at both ends, so the camera starts and stops like a scroll would. */
+const PAN_EASE = gsap.parseEase("power1.inOut");
+
+/** A dissolve wants no accent at either end. */
+const LOGO_FADE_EASE = gsap.parseEase("sine.inOut");
+
+/**
+ * Three balls of the same material thrown slightly differently, which is the
+ * whole point — identical arcs read as one animation played three times.
+ *
+ * The solved trajectory (planFall) supplies weight and momentum. These supply
+ * the imperfection around it, and each is a separate beat of the gesture:
+ *
+ *   `anticipate`  a few px *back* into the wordmark before letting go — the
+ *                 load-up. Without it the dot is simply already moving on the
+ *                 first frame, which is the single biggest tell of a tween.
+ *   `kick`        a sideways shove at the moment of release, spent within the
+ *                 first fifth of the flight, so the dot pops away from the mark
+ *                 rather than setting off toward its column.
+ *   `wobble`      a fast ring that damps out early — the stored energy leaving.
+ *   `lift`        how far it rises before gravity wins, in px.
+ *   `restitution` speed kept at each impact, so it sets both bounce height and
+ *                 how quickly the dot gives up.
+ *   `drift`       a sideways bow across the whole flight, in px at 1440 wide.
+ *   `drag`        the exponent on its horizontal ease-out. Different per dot so
+ *                 that even the lateral travel is not a shared curve.
+ */
+const DOT_PHYSICS = [
+  { lift: 18, restitution: 0.55, drift: 18, drag: 2.6, kick: 10, wobble: 3.4, anticipate: 4 },
+  { lift: 14, restitution: 0.5, drift: -13, drag: 3.1, kick: -7, wobble: 2.6, anticipate: 3 },
+  { lift: 20, restitution: 0.58, drift: 22, drag: 2.3, kick: 12, wobble: 3.8, anticipate: 5 },
+] as const;
+
+/** How far past its slot the dot carries on the first impact, in px. */
+const DOT_PENETRATE_PX = 6;
+
+/** Fractions of a flight: the load-up, the sideways kick, one penetration. */
+const ANT_SPAN = 0.09;
+const KICK_SPAN = 0.2;
+const PEN_SPAN = 0.035;
+
+/** A single smooth 0 → 1 → 0 bump across [0, span]. */
+const bump = (p: number, span: number) =>
+  p <= 0 || p >= span ? 0 : Math.sin(Math.PI * (p / span));
+
+/** A fast ring that is spent within the first third of the flight. */
+const ring = (p: number) => Math.sin(Math.PI * 6 * p) * Math.exp(-9 * p);
+
+/**
+ * Impacts before the dot is allowed to be still. Four, because at this
+ * restitution the third is still worth seeing — the heights fall off as the
+ * square of the ratio, so 0.55 gives roughly 30%, 9% and 3% of the drop, and
+ * only the fourth is genuinely too small to notice.
+ */
+const DOT_BOUNCES = 4;
+
+/** A settled tail on the end of each fall, as a fraction of its descent. */
+const DOT_REST = 0.08;
+
+type Fall = {
+  /** Upward launch speed. */
+  v0: number;
+  /** When it first reaches the slot. */
+  land: number;
+  /** Launch speed of each bounce, which is also that bounce's duration. */
+  hops: number[];
+  /** The whole trajectory, including the settled tail. */
+  total: number;
+  /** Normalized time of each impact, for the penetration pulse. */
+  impacts: number[];
+  /** Scroll this fall is given, in vh — assigned once all three are planned. */
+  window: number;
+  /** Net descent, in px. Negative when the slot is above the release point. */
+  drop: number;
+};
+
+/**
+ * Solves a dot's trajectory once, so the per-frame work is a lookup.
+ *
+ * Everything is in a unit system where the acceleration is 2, which makes a drop
+ * from rest exactly `t²` px and keeps the algebra free of constants. `t`
+ * therefore carries units of √px, and that is the useful part: a fall twice as
+ * far takes √2 times as long. Handing each dot a scroll window proportional to
+ * its own `total` — see the caller — is what puts all three under *one* gravity
+ * instead of three, so they read as the same material rather than as three
+ * separately-tuned animations. Without it the shortest fall looks like a
+ * feather.
+ *
+ * The trajectory: rise `lift` px, fall to the slot, then DOT_BOUNCES parabolic
+ * hops each keeping `restitution` of the impact speed, then rest.
+ */
+function planFall(drop: number, lift: number, restitution: number): Fall {
+  // Thrown up hard enough to still be coming *down* onto the slot even when the
+  // slot is above the release point — which is the case on a phone, where the
+  // stacked footer puts the first column higher than the wordmark. Below this
+  // the descent has no real solution at all and the dot would have to climb.
+  const rise = Math.max(lift, lift - drop);
+  const v0 = 2 * Math.sqrt(rise);
+  const impact = Math.sqrt(v0 * v0 + 4 * drop);
+  const land = (v0 + impact) / 2;
+
+  const hops: number[] = [];
+  let u = impact * restitution;
+  for (let k = 0; k < DOT_BOUNCES; k++) {
+    hops.push(u);
+    u *= restitution;
+  }
+
+  const total = land + hops.reduce((a, b) => a + b, 0) + DOT_REST * land;
+
+  // Contact times, normalized. Only the first two are ever used — by the third
+  // the dot has no energy left to squash with, and leaving the last one out is
+  // also what guarantees the pulse cannot still be running at p = 1 and leave
+  // the dot resting a pixel below its column.
+  const impacts: number[] = [];
+  let at = land;
+  for (const u of hops) {
+    impacts.push(at / total);
+    at += u;
+  }
+
+  return { v0, land, hops, total, impacts, window: 0, drop };
+}
+
+/**
+ * How far *past* the slot the dot is at time `p` — the give on impact. A ball
+ * does not stop dead on contact; it carries a little way in, then comes back.
+ * Halved at each successive impact, along with everything else.
+ */
+function penetrationAt(f: Fall, p: number) {
+  let out = 0;
+  for (let k = 0; k < Math.min(2, f.impacts.length); k++) {
+    const d = Math.abs(p - f.impacts[k]) / PEN_SPAN;
+    if (d < 1) {
+      out += DOT_PENETRATE_PX * 0.5 ** k * (1 + Math.cos(Math.PI * d)) * 0.5;
+    }
+  }
+  return out;
+}
+
+/** How far below its release point the dot is, at progress `p` of its fall. */
+function fallAt(f: Fall, p: number) {
+  const t = p * f.total;
+  // The descent: thrown up at v0 against an acceleration of 2. Reaches exactly
+  // `drop` at `land`, by construction.
+  if (t <= f.land) return t * t - f.v0 * t;
+  // Then one parabola per bounce, each leaving and returning to the slot.
+  let r = t - f.land;
+  for (const u of f.hops) {
+    if (r < u) return f.drop - (u - r) * r;
+    r -= u;
+  }
+  return f.drop;
+}
 
 const DICTIONARY_CONTENT = (
   <>
@@ -110,9 +342,25 @@ const DICTIONARY_CONTENT = (
   </>
 );
 
+const FOOTER_COLUMNS = [
+  {
+    heading: "Brand strategy & creative direction",
+    body: "We define the brand at the strategic level, then bring it all together—from the big picture to every message, visual, and asset.",
+  },
+  {
+    heading: "Development & AI engineering",
+    body: "Developing scalable digital products, intelligent systems, and working experiences.",
+  },
+  {
+    heading: "Commercial strategy & growth opportunities",
+    body: "Connects every decision to the business—clarifying the opportunity, guiding the transformation, and keeping it focused on growth.",
+  },
+];
+
 /**
  * The editorial statement, with the round photo and the "ikra." wordmark stacked
- * below it, the wordmark layered over the photo.
+ * below it, the wordmark layered over the photo — and then the wordmark's own
+ * dots carrying the page into the footer.
  *
  * Phases, in vh of actual scrolling through the pin (see PIN_VH). Once the
  * statement is gone the window and the definition run concurrently, so the phases
@@ -143,7 +391,25 @@ const DICTIONARY_CONTENT = (
  *             Shorten it and the settled side-by-side composition is the first
  *             thing to go, since the wordmark's cue cannot fire until the
  *             definition has climbed most of the way up.
- *  300–330vh  hold — the wordmark alone, then the pin releases into the footer.
+ *  300–330vh  hold — the wordmark alone, the last beat before the footer.
+ *  330–390vh  the wordmark dissolves where it stands. Its three dots are
+ *             separate solid elements standing on the artwork's own, so the
+ *             letterforms thin out from under them and the dots are left
+ *             hanging in mid-air. There is then an 18vh beat with nothing on
+ *             screen but those three dots.
+ *  390–452vh  the camera pans down the track onto the footer. It is finished
+ *             before the first dot touches down, because a dot cannot be seen
+ *             landing on a floor that is still moving.
+ *  408–606vh  the dots fall. Not an interpolation with a bounce ease on it: the
+ *             vertical is a solved ballistic trajectory — thrown up as it lets
+ *             go, accelerating down, three decaying parabolic bounces, then
+ *             still — read at a scroll-derived time. Each dot's scroll window is
+ *             sized to its own flight time so all three obey one gravity, and
+ *             they are given different lift, restitution and sideways drift so
+ *             no two paths are the same. Both endpoints are fixed points on
+ *             screen with the camera in neither, so the dots hang in the
+ *             viewport and fall through it while the page pans behind them.
+ *  606–640vh  hold on the finished footer, then the pin releases.
  *
  * Pinned with GSAP rather than CSS `sticky`, which does not work under
  * ScrollSmoother's transform-based fake scroll (see the note in HeroNarrative).
@@ -151,12 +417,17 @@ const DICTIONARY_CONTENT = (
 export default function DefinitionSection() {
   const sectionRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
   const statementRef = useRef<HTMLDivElement>(null);
   const circleRef = useRef<HTMLDivElement>(null);
   const photoRef = useRef<HTMLDivElement>(null);
   const veilRef = useRef<HTMLDivElement>(null);
   const markRef = useRef<HTMLDivElement>(null);
   const dictionaryRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+  const slotRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const dotRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
@@ -169,8 +440,10 @@ export default function DefinitionSection() {
     if (reducedMotion) return;
     const section = sectionRef.current;
     const stage = stageRef.current;
+    const track = trackRef.current;
+    const frame = frameRef.current;
     const circle = circleRef.current;
-    if (!section || !stage || !circle) return;
+    if (!section || !stage || !track || !frame || !circle) return;
 
     const ctx = gsap.context(() => {
       // Everything the per-frame handler needs from the layout, re-read whenever
@@ -182,31 +455,49 @@ export default function DefinitionSection() {
         baseSize: 1,
         cx: 0,
         cy: 0,
+        frameH: 1,
         statementTravel: 0,
+        markX: 0,
+        markY: 0,
+        markW: 1,
+        markH: 1,
         markToLeft: 0,
         markToMiddle: 0,
         markCentreY: 0,
         dictHeight: 0,
+        camEnd: 0,
+        slots: [] as ({ x: number; y: number; size: number } | null)[],
+        dots: [] as ({
+          fromX: number;
+          fromY: number;
+          toX: number;
+          scale0: number;
+          fall: Fall;
+        } | null)[],
       };
 
       /**
-       * Position within the stage, accumulated up the offsetParent chain.
+       * Position within `root`, accumulated up the offsetParent chain.
        *
        * Deliberately not getBoundingClientRect: rects include transforms, so a
        * rect-based measurement is only meaningful before anything has animated.
        * offsetTop/offsetLeft are layout values, so this can run mid-scroll with
        * the circle scaled six times over and still report where things *live*.
        *
-       * Stage-relative because before the pin engages the stage is still at its
-       * document position; once pinned its top is the viewport top, so an offset
-       * inside the stage *is* the on-screen position.
+       * Two roots are used. The composition is measured against `frame`, which
+       * is the track's first screen and so sits at track origin — before the pin
+       * engages the frame is still at its document position, and once pinned its
+       * top is the viewport top, so an offset inside it *is* the on-screen
+       * position. The footer's dot slots are measured against `track`, which
+       * folds in the frame's own height, and the camera's `y` converts both to
+       * the same screen space.
        */
-      const offsetInStage = (el: HTMLElement) => {
+      const offsetIn = (el: HTMLElement, root: HTMLElement) => {
         let x = 0;
         let y = 0;
         for (
           let node: HTMLElement | null = el;
-          node && node !== stage;
+          node && node !== root;
           node = node.offsetParent as HTMLElement | null
         ) {
           x += node.offsetLeft;
@@ -221,33 +512,114 @@ export default function DefinitionSection() {
         // Computed style rather than a rect, so the scale transform on the circle
         // doesn't affect it.
         m.baseSize = parseFloat(getComputedStyle(circle).width) || 1;
-        const circleAt = offsetInStage(circle);
+        const circleAt = offsetIn(circle, frame);
         m.cx = circleAt.x + m.baseSize / 2;
         m.cy = circleAt.y + m.baseSize / 2;
+        m.frameH = frame.offsetHeight || 1;
 
-        // Exactly to where the statement's own bottom edge meets the stage's top,
+        // Exactly to where the statement's own bottom edge meets the frame's top,
         // so it is fully gone rather than relying on the fade to hide a stub.
         const statement = statementRef.current;
         m.statementTravel = statement
-          ? offsetInStage(statement).y + statement.offsetHeight
+          ? offsetIn(statement, frame).y + statement.offsetHeight
           : 0;
 
-        // The wordmark's final resting place: hard left against the stage's
+        // The wordmark's final resting place: hard left against the frame's
         // padding, and up to the vertical middle. Its centre line is kept too,
         // since the wordmark's cue is derived from where the definition is
-        // relative to it.
+        // relative to it, and its box because the dots are placed inside it.
         const mark = markRef.current;
-        const padLeft = parseFloat(getComputedStyle(stage).paddingLeft) || 0;
+        const padLeft = parseFloat(getComputedStyle(frame).paddingLeft) || 0;
         if (mark) {
-          const markAt = offsetInStage(mark);
+          const markAt = offsetIn(mark, frame);
+          m.markX = markAt.x;
+          m.markY = markAt.y;
+          m.markW = mark.offsetWidth || 1;
+          m.markH = mark.offsetHeight || 1;
           m.markToLeft = markAt.x - padLeft;
           m.markCentreY = markAt.y + mark.offsetHeight / 2;
-          m.markToMiddle = m.markCentreY - stage.offsetHeight / 2;
+          m.markToMiddle = m.markCentreY - m.frameH / 2;
         }
 
         // So the definition's travel can end with the whole block clear of the
         // top rather than at a guessed offset.
         m.dictHeight = dictionaryRef.current?.offsetHeight ?? 0;
+
+        // How far the camera travels: enough to bring the footer's bottom edge
+        // onto the viewport's. Measured rather than "one viewport" so the footer
+        // can be whatever height its own content makes it — a low band on a
+        // desktop, most of the screen once the columns stack on a phone — and
+        // still come to rest properly seated.
+        //
+        // Both clamps matter. Zero, so a footer shorter than the space below it
+        // cannot pan backwards. And the footer's own top, because a footer
+        // *taller* than the viewport cannot seat both edges: it has to lose one,
+        // and it must be the bottom. Losing the top would take the first
+        // column's dot off the screen with it, and a dot that lands somewhere
+        // the reader cannot see is the one failure this whole sequence cannot
+        // survive. On a short phone that trims a little of the bottom padding.
+        const footer = footerRef.current;
+        if (footer) {
+          const footerTop = offsetIn(footer, track).y;
+          const seated = m.frameH - (footerTop + footer.offsetHeight);
+          m.camEnd = Math.min(0, Math.max(seated, -footerTop));
+        } else {
+          m.camEnd = 0;
+        }
+
+        // Where each dot is going. Sized from the slot too, so the falling dot
+        // settles at exactly the footer's own dot size whatever the viewport
+        // resolves that clamp() to.
+        m.slots = LOGO_DOTS.map((_, i) => {
+          const slot = slotRefs.current[i];
+          if (!slot) return null;
+          const at = offsetIn(slot, track);
+          const size = slot.offsetWidth || 1;
+          const dot = dotRefs.current[i];
+          if (dot) gsap.set(dot, { width: size, height: size });
+          return { x: at.x + size / 2, y: at.y + size / 2, size };
+        });
+
+        // Both ends of every fall, and the trajectory between them, solved here
+        // rather than per frame — none of it changes until the layout does.
+        //
+        // The release point is the wordmark at rest, i.e. after its slide left,
+        // which is settled 150vh before any of this begins. Taking the rest
+        // position rather than the live one is what lets the trajectory be
+        // planned ahead: a dot cannot be handed a fall if its floor is still
+        // being decided.
+        const restX = m.markX - m.markToLeft;
+        const restY = m.markY - m.markToMiddle;
+        m.dots = LOGO_DOTS.map((d, i) => {
+          const slot = m.slots[i];
+          if (!slot) return null;
+          const fromY = restY + d.cy * m.markH;
+          const phys = DOT_PHYSICS[i];
+          return {
+            fromX: restX + d.cx * m.markW,
+            fromY,
+            toX: slot.x,
+            scale0: (d.d * m.markW) / slot.size,
+            fall: planFall(
+              slot.y + m.camEnd - fromY,
+              phys.lift,
+              phys.restitution,
+            ),
+          };
+        });
+
+        // One gravity for all three: the longest trajectory gets the whole
+        // budget and the others get the same fraction of it that their own
+        // flight time is of that one. A dot with half the drop then finishes
+        // early and sits there, which is what actually happens when you drop two
+        // balls from different heights.
+        const longest = Math.max(
+          1,
+          ...m.dots.map((d) => d?.fall.total ?? 0),
+        );
+        for (const d of m.dots) {
+          if (d) d.fall.window = DROP_VH * (d.fall.total / longest);
+        }
       };
       measure();
 
@@ -277,7 +649,7 @@ export default function DefinitionSection() {
 
       // Parked below the fold before the first render, so it cannot flash over
       // the statement on the first paint.
-      gsap.set(dictionaryRef.current, { y: stage.offsetHeight });
+      gsap.set(dictionaryRef.current, { y: m.frameH });
 
       // One frame of the sequence, from the pin's progress. Named rather than
       // inline in the trigger because it has to be callable after a re-measure:
@@ -346,10 +718,14 @@ export default function DefinitionSection() {
           y: gsap.utils.interpolate(H, -m.dictHeight, dictP),
         });
 
+        // --- Phase 8: the camera pans onto the footer (390 – 452vh) ---
+        const panP = PAN_EASE(gsap.utils.clamp(0, 1, (vh - PAN_AT) / PAN_VH));
+        gsap.set(track, { y: panP * m.camEnd });
+
         // --- Phase 4: the wordmark slides aside, once the definition is level
         // with it ---
         // Left, and barely up at all: the grid centres the composition on the
-        // stage, so it starts within ~20px of its final height.
+        // frame, so it starts within ~20px of its final height.
         //
         // Its cue is the moment the definition's top edge reaches the wordmark's
         // centre line — where the two are unmistakably side by side and the
@@ -372,13 +748,108 @@ export default function DefinitionSection() {
         );
         const markAt = DICT_AT + levelP * DICT_VH - MARK_LEAD_VH;
         const markP = gsap.utils.clamp(0, 1, (vh - markAt) / MARK_VH);
+
+        // --- Phase 7: the wordmark dissolves (330 – 390vh) ---
+        // In place, not away: it does not move, shrink or rise, it just stops
+        // being there. The three dots are separate elements standing on top of
+        // the artwork's own at full opacity, so the letterforms thin out from
+        // under them and leave the dots hanging. Nothing is masked and nothing
+        // is cut out of the PNG — the dots are simply the part that does not
+        // fade.
+        const markFadeP = LOGO_FADE_EASE(
+          gsap.utils.clamp(0, 1, (vh - LOGO_FADE_AT) / LOGO_FADE_VH),
+        );
         gsap.set(markRef.current, {
           x: -m.markToLeft * markP,
           y: -m.markToMiddle * markP,
+          opacity: 1 - markFadeP,
         });
 
-        // --- Phase 6: hold (300 – 330vh) — the wordmark alone, a beat before
-        // the pin releases into the footer.
+        // --- Phase 9: the dots fall (408 – 606vh) ---
+        //
+        // The vertical is not an interpolation. `fallAt` returns a *position
+        // under acceleration* — thrown up as it lets go, accelerating down,
+        // then a parabola per bounce, each one shorter and lower than the last
+        // (see planFall). Reading the trajectory at a scroll-derived time is
+        // what makes it read as weight instead of as a tween: the dot is
+        // genuinely moving fastest just before each impact and slowest at the
+        // top of each hop, which no easing curve applied to a lerp will do,
+        // because a lerp has one arrival and gravity has four.
+        //
+        // Only the sideways travel is eased, and only because horizontal motion
+        // has no equivalent story — it is launched and bleeds off.
+        //
+        // Both ends are fixed points *on screen*, with the camera in neither.
+        // That matters, and the obvious alternative does not work: interpolate
+        // between the dot's live position on the wordmark and its slot's live
+        // position on the rising footer, and both endpoints race upward while
+        // the dot crosses between them, which throws it off the bottom of the
+        // screen and back. Fixed endpoints mean the dots hang in the viewport
+        // and fall through it while the page pans behind them.
+        //
+        // Visibility is a hard toggle at the instant the wordmark begins to
+        // dissolve, and it is invisible because nothing has moved yet: each dot
+        // is standing exactly on the artwork's own. It cannot simply be left on,
+        // because these dots are children of the stage and so paint above the
+        // frame's entire contents — including the definition, which is supposed
+        // to pass *over* the wordmark where the two overlap on a phone.
+        const lit = vh >= LOGO_FADE_AT;
+        const driftScale = Math.min(1, W / 1440);
+        for (let i = 0; i < LOGO_DOTS.length; i++) {
+          const dot = dotRefs.current[i];
+          const d = m.dots[i];
+          if (!dot || !d) continue;
+
+          const p = gsap.utils.clamp(
+            0,
+            1,
+            (vh - (DROP_AT + i * DROP_STAGGER_VH)) / d.fall.window,
+          );
+          const ph = DOT_PHYSICS[i];
+          // Its own exponent, so the lateral travel is not a shared curve
+          // either: launched with some speed and bleeding it off, still drifting
+          // through the first bounce and laying down the last of it as it rests.
+          const glide = 1 - (1 - p) ** ph.drag;
+
+          gsap.set(dot, {
+            // Toggled, never faded — the footer's dots do not animate in.
+            visibility: lit ? "visible" : "hidden",
+            xPercent: -50,
+            yPercent: -50,
+            // Bow, then the release kick, then the ring. The bow rides raw
+            // progress so it closes exactly as the dot comes to rest; the other
+            // two are spent long before that, so none of them can leave the dot
+            // parked beside its column.
+            x:
+              gsap.utils.interpolate(d.fromX, d.toX, glide) +
+              Math.sin(Math.PI * p) * ph.drift * driftScale +
+              bump(p, KICK_SPAN) * ph.kick +
+              ring(p) * ph.wobble,
+            // The solved trajectory, plus the load-up before it — a few px back
+            // into the wordmark while the launch is still winding up — plus the
+            // give as it hits.
+            y:
+              d.fromY +
+              fallAt(d.fall, p) +
+              bump(p, ANT_SPAN) * ph.anticipate +
+              penetrationAt(d.fall, p),
+            // Squash, on the two occasions a rubber ball has one: winding up to
+            // launch, and again on each impact — where it rides the same pulse
+            // as the penetration, because they are the same event. As a counter
+            // -move in `y` the load-up was invisible; the launch velocity buries
+            // it inside the first frame. On scale it reads, and it cannot fight
+            // gravity. Both terms are zero by p = 1, so the dot still settles at
+            // exactly the footer's own dot size.
+            scale:
+              gsap.utils.interpolate(d.scale0, 1, glide) *
+              (1 -
+                0.09 * bump(p, ANT_SPAN) -
+                (0.11 * penetrationAt(d.fall, p)) / DOT_PENETRATE_PX),
+          });
+        }
+
+        // --- Phase 10: hold (606 – 640vh) — the finished footer, a beat before
+        // the pin releases.
       }
 
       const trigger = ScrollTrigger.create({
@@ -402,7 +873,8 @@ export default function DefinitionSection() {
       // The other thing that moves the layout after mount: the webfont landing.
       // It changes the statement's height, and on a short viewport that takes the
       // whole composition with it — so `cy` was measured against a layout that no
-      // longer exists.
+      // longer exists. It also reflows the footer headings, which moves the dots'
+      // targets.
       let cancelled = false;
       document.fonts.ready.then(() => {
         if (cancelled) return;
@@ -422,15 +894,17 @@ export default function DefinitionSection() {
        * anything other than the window moves no event ScrollTrigger or the font
        * loader knows about. A ResizeObserver watches the layout box, so scaling
        * the circle every frame never fires it — only a real size change does.
-       * The stage goes in the same observer for the vh terms in that size
-       * expression, which the window's resize event can lag behind on mobile.
+       * The frame goes in the same observer for the vh terms in that size
+       * expression, which the window's resize event can lag behind on mobile, and
+       * the footer because a heading rewrapping moves every dot's destination.
        */
       const sizeObserver = new ResizeObserver(() => {
         measure();
         render(trigger.progress);
       });
       sizeObserver.observe(circle);
-      sizeObserver.observe(stage);
+      sizeObserver.observe(frame);
+      if (footerRef.current) sizeObserver.observe(footerRef.current);
 
       /**
        * The cross-fade out of the hero: scrubs the veil's opacity 0→1 across the
@@ -514,144 +988,250 @@ export default function DefinitionSection() {
         />
       )}
 
-      {/* One composition, not two layers. The statement and the stage used to be
-          siblings in normal flow, so once the stage was pinned its centred
-          wordmark simply landed on top of the text. Both now live in the same
-          grid, so they cannot overlap.
-
-          Three rows — 1fr, auto, 1fr — with the statement first and the
-          composition second. The two 1fr rows take equal shares of what the
-          middle leaves, which puts the circle on the stage's own centre line
-          instead of in the middle of the space *below* the statement.
-
-          A grid rather than absolute positioning because it degrades in the right
-          direction: a 1fr row cannot shrink below its content, so on a viewport
-          too short for both, the third row gives up its share and the composition
-          slides *down*, never up into the copy. */}
+      {/* The stage is the camera: exactly one viewport, pinned, clipping a track
+          that is two screens tall. The flying dots are its direct children
+          rather than the track's, so their coordinates are plain screen
+          coordinates and the camera's own movement only enters where it is
+          wanted — through the endpoints, which are recomputed per frame. */}
       <div
         ref={stageRef}
-        className="relative z-50 grid h-screen w-full grid-rows-[1fr_auto_1fr] items-start overflow-hidden px-8 pt-16 pb-10 md:px-16 md:pt-20"
+        className={`relative z-50 w-full ${reducedMotion ? "" : "h-screen overflow-hidden"}`}
       >
-        {/* GSAP drives `y` on this wrapper while RevealBlock's own entrance
-            transform stays on the element inside it, so the two compose instead
-            of one clobbering the other.
+        <div ref={trackRef} className="relative w-full">
+          {/* Screen one. One composition, not two layers: the statement and the
+              composition used to be siblings in normal flow, so once the stage
+              was pinned its centred wordmark simply landed on top of the text.
+              Both now live in the same grid, so they cannot overlap.
 
-            `items-start` keeps this hugging its text rather than stretching to
-            fill its row, which matters beyond looks: `statementTravel` is
-            measured from this element's bottom edge, and a stretched box would
-            send the statement flying further than it needs to. */}
-        <div ref={statementRef} className="row-start-1">
-          <RevealBlock>
-            <p className="max-w-4xl text-[26px] leading-[1.3] font-normal text-ink md:text-[35px]">
-              We are rebranding agency for the most discerning ambitions. Our
-              work transforms a simple idea into an experience of true rarity
-              and prestige.
-            </p>
-          </RevealBlock>
-        </div>
+              Three rows — 1fr, auto, 1fr — with the statement first and the
+              composition second. The two 1fr rows take equal shares of what the
+              middle leaves, which puts the circle on the frame's own centre line
+              instead of in the middle of the space *below* the statement.
 
-        {/* The middle row: sized to its own content, so the 1fr rows either side
-            can balance it on the stage's centre line. */}
-        <div className="relative row-start-2 grid place-items-center">
-          {/* Grid stacking: both children sit in the same cell, so the wordmark
-              layers over the photo with no absolute positioning and no
-              translate-centring for GSAP to overwrite later.
+              A grid rather than absolute positioning because it degrades in the
+              right direction: a 1fr row cannot shrink below its content, so on a
+              viewport too short for both, the third row gives up its share and
+              the composition slides *down*, never up into the copy.
 
-              Both are sized against vw *and* vh, capped in px, with a px floor.
-              The vw term makes them big on a wide screen; the vh term stops them
-              growing into the statement on a short one, which is what keeps the
-              no-overlap guarantee honest; the floor stops the vw term collapsing
-              them below 100px on a phone.
-
-              The wordmark stays a consistent 1.5× the circle at every breakpoint,
-              because the overhang either side of the disc is the composition
-              rather than a coincidence. The resting size is genuinely free to
-              change: `baseSize` is read from the computed style and `maxScale` is
-              solved from it, so a smaller disc simply scales further to reach the
-              same full-bleed frame at the same sharpness. */}
-          {/* `relative` is load-bearing: `<Image fill>` is absolute, so without it
-              the photo would resolve against the grid group above and — since
-              overflow only clips absolute descendants whose containing block is
-              inside the clipper — escape the round mask entirely. */}
+              `overflow-hidden` is load-bearing now that the footer is the next
+              screen down: the definition is parked a full frame-height below the
+              top, which is exactly where the footer begins. */}
           <div
-            ref={circleRef}
-            aria-hidden
-            className="relative col-start-1 row-start-1 overflow-hidden rounded-full"
-            style={{
-              width: "max(160px, min(19vw, 35vh, 340px))",
-              height: "max(160px, min(19vw, 35vh, 340px))",
-            }}
+            ref={frameRef}
+            className="relative grid h-screen w-full grid-rows-[1fr_auto_1fr] items-start overflow-hidden px-8 pt-16 pb-10 md:px-16 md:pt-20"
           >
-            {/* Deliberately NOT sized to the circle: it is a full-bleed
-                viewport-cover layer, and the circle is only a window onto it.
-                `w-screen h-screen` rather than measured pixels so a resize is the
-                browser's job — and `sizes` can honestly say 100vw, which is the
-                other half of the sharpness fix.
+            {/* GSAP drives `y` on this wrapper while RevealBlock's own entrance
+                transform stays on the element inside it, so the two compose
+                instead of one clobbering the other.
 
-                Reduced motion never runs placePhoto, so there it falls back to
-                simply filling the circle. */}
-            <div
-              ref={photoRef}
-              className={
-                reducedMotion
-                  ? "absolute inset-0"
-                  : "absolute top-0 left-0 h-screen w-screen"
-              }
-            >
-              <Image
-                src="/img/section3-spoon.jpg"
-                alt=""
-                fill
-                className="object-cover"
-                sizes={reducedMotion ? "50vw" : "100vw"}
-                priority
-              />
+                `items-start` keeps this hugging its text rather than stretching
+                to fill its row, which matters beyond looks: `statementTravel` is
+                measured from this element's bottom edge, and a stretched box
+                would send the statement flying further than it needs to. */}
+            <div ref={statementRef} className="row-start-1">
+              <RevealBlock>
+                <p className="max-w-4xl text-[26px] leading-[1.3] font-normal text-ink md:text-[35px]">
+                  We are rebranding agency for the most discerning ambitions.
+                  Our work transforms a simple idea into an experience of true
+                  rarity and prestige.
+                </p>
+              </RevealBlock>
+            </div>
+
+            {/* The middle row: sized to its own content, so the 1fr rows either
+                side can balance it on the frame's centre line. */}
+            <div className="relative row-start-2 grid place-items-center">
+              {/* Grid stacking: both children sit in the same cell, so the
+                  wordmark layers over the photo with no absolute positioning and
+                  no translate-centring for GSAP to overwrite later.
+
+                  Both are sized against vw *and* vh, capped in px, with a px
+                  floor. The vw term makes them big on a wide screen; the vh term
+                  stops them growing into the statement on a short one, which is
+                  what keeps the no-overlap guarantee honest; the floor stops the
+                  vw term collapsing them below 100px on a phone.
+
+                  The wordmark stays a consistent 1.5× the circle at every
+                  breakpoint, because the overhang either side of the disc is the
+                  composition rather than a coincidence. The resting size is
+                  genuinely free to change: `baseSize` is read from the computed
+                  style and `maxScale` is solved from it, so a smaller disc simply
+                  scales further to reach the same full-bleed frame at the same
+                  sharpness. */}
+              {/* `relative` is load-bearing: `<Image fill>` is absolute, so
+                  without it the photo would resolve against the grid group above
+                  and — since overflow only clips absolute descendants whose
+                  containing block is inside the clipper — escape the round mask
+                  entirely. */}
+              <div
+                ref={circleRef}
+                aria-hidden
+                className="relative col-start-1 row-start-1 overflow-hidden rounded-full"
+                style={{
+                  width: "max(160px, min(19vw, 35vh, 340px))",
+                  height: "max(160px, min(19vw, 35vh, 340px))",
+                }}
+              >
+                {/* Deliberately NOT sized to the circle: it is a full-bleed
+                    viewport-cover layer, and the circle is only a window onto it.
+                    `w-screen h-screen` rather than measured pixels so a resize is
+                    the browser's job — and `sizes` can honestly say 100vw, which
+                    is the other half of the sharpness fix.
+
+                    Reduced motion never runs placePhoto, so there it falls back
+                    to simply filling the circle. */}
+                <div
+                  ref={photoRef}
+                  className={
+                    reducedMotion
+                      ? "absolute inset-0"
+                      : "absolute top-0 left-0 h-screen w-screen"
+                  }
+                >
+                  <Image
+                    src="/img/section3-spoon.jpg"
+                    alt=""
+                    fill
+                    className="object-cover"
+                    sizes={reducedMotion ? "50vw" : "100vw"}
+                    priority
+                  />
+                </div>
+              </div>
+
+              {/* Wider than the circle on purpose — 1.5× it in every term — so
+                  the wordmark overhangs it on both sides. Wrapped so the width
+                  can be a multi-term min(); Logo takes its height from its own
+                  ~2.44:1 aspect ratio, which is why the circle sets the
+                  composition's height. */}
+              {/* `relative` here for paint order, and it is load-bearing:
+                  positioned siblings paint above non-positioned ones regardless
+                  of DOM order, so once the circle became `relative` it started
+                  covering this. Making both positioned restores plain tree order.
+                  Deliberately no z-index — the definition must stay above this,
+                  and on a phone the two do overlap. */}
+              <div
+                ref={markRef}
+                className="relative col-start-1 row-start-1"
+                style={{ width: "max(240px, min(29vw, 53vh, 520px))" }}
+              >
+                <Logo className="w-full" color="var(--color-accent)" />
+              </div>
+            </div>
+
+            {/* Inside the pinned frame so its upward travel can be driven against
+                scroll rather than happening at page speed.
+
+                Anchored at `top-0` with no vertical centring: GSAP drives `y`
+                here, which rewrites the whole transform, so a Tailwind
+                `-translate-y-1/2` would be wiped the instant the first frame
+                ran. */}
+            {!reducedMotion && (
+              <div
+                ref={dictionaryRef}
+                className="pointer-events-none absolute inset-x-8 top-0 md:inset-x-auto md:right-16 md:w-[42%] md:max-w-140"
+              >
+                {DICTIONARY_CONTENT}
+              </div>
+            )}
+          </div>
+
+          {/* Reduced motion only: nothing pins or fades, so the definition
+              follows the composition in normal flow, above the footer. There must
+              only ever be one of these, since both carry `dictionaryRef`. */}
+          {reducedMotion && (
+            <div className="px-8 pb-24 md:px-16">
+              <RevealBlock className="max-w-md">
+                {DICTIONARY_CONTENT}
+              </RevealBlock>
+            </div>
+          )}
+
+          {/* Screen two: the footer. Entirely static — no entrance of its own,
+              by design. It is already sitting here in the layout; the camera
+              pans onto it and the dots arrive, and that is the whole reveal.
+
+              Deliberately *not* h-screen. Its own content height is what the
+              camera's travel is measured from, so on a desktop it settles into
+              the lower part of the frame and on a phone — where the columns
+              stack and it is nearly a screen tall by itself — it fills almost
+              all of it. One rule, two layouts, nothing to keep in sync.
+
+              How high the columns can sit is not a free choice. The dots have
+              to *fall* onto them, and they leave from a wordmark on the frame's
+              centre line, so a slot much above that turns the fall into a lob.
+              Because the footer is bottom-anchored, the slots' height is set
+              entirely by what is below them — the copy, the bar, and the bottom
+              padding — and not at all by the padding above. That is why the
+              bar earns its place: it fills the bottom of the screen, which is
+              the only direction this composition can grow without flattening
+              the fall. */}
+          <div
+            ref={footerRef}
+            className={`w-full px-8 md:px-16 ${reducedMotion ? "py-24" : "py-8 md:pt-[24vh] md:pb-8"}`}
+          >
+            <div className="mx-auto w-full max-w-7xl">
+              <div className="grid gap-7 md:grid-cols-3 md:gap-10 lg:gap-14">
+                {FOOTER_COLUMNS.map((col, i) => (
+                  <div key={col.heading}>
+                    {/* The landing pad, not the dot. It reserves the space and
+                        is what `measure` reads the destination and the final
+                        size from; the dot that ends up sitting in it fell here.
+                        Under reduced motion nothing falls, so it is the dot. */}
+                    <span
+                      aria-hidden
+                      ref={(el) => {
+                        slotRefs.current[i] = el;
+                      }}
+                      className={`block rounded-full ${reducedMotion ? "bg-accent" : ""}`}
+                      style={{
+                        width: FOOTER_DOT_SIZE,
+                        height: FOOTER_DOT_SIZE,
+                      }}
+                    />
+                    <h3
+                      className="mt-5 leading-[1.25] font-medium text-ink md:mt-8"
+                      style={{ fontSize: FOOTER_HEADING_SIZE }}
+                    >
+                      {col.heading}
+                    </h3>
+                    <p
+                      className="mt-3 leading-[1.55] font-light text-ink/70 md:mt-5 md:leading-[1.65]"
+                      style={{ fontSize: FOOTER_BODY_SIZE }}
+                    >
+                      {col.body}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Hidden below md, where the three stacked columns already run
+                  the full height of the frame and this would only be clipped
+                  off the bottom by the camera's own clamp. */}
+              <div className="mt-12 hidden border-t border-ink/15 pt-5 text-sm font-light text-ink/55 md:flex md:items-center md:justify-between">
+                <p>© {new Date().getFullYear()} ikra studio. All rights reserved.</p>
+                <p>Rebranding agency for the most discerning ambitions.</p>
+              </div>
             </div>
           </div>
-
-          {/* Wider than the circle on purpose — 1.5× it in every term — so the
-              wordmark overhangs it on both sides. Wrapped so the width can be a
-              multi-term min(); Logo takes its height from its own ~2.44:1 aspect
-              ratio, which is why the circle sets the composition's height. */}
-          {/* `relative` here purely for paint order, and it is load-bearing:
-              positioned siblings paint above non-positioned ones regardless of
-              DOM order, so once the circle became `relative` it started covering
-              this. Making both positioned restores plain tree order. Deliberately
-              no z-index — the definition must stay above this, and on a phone the
-              two do overlap. */}
-          <div
-            ref={markRef}
-            className="relative col-start-1 row-start-1"
-            style={{ width: "max(240px, min(29vw, 53vh, 520px))" }}
-          >
-            <Logo className="w-full" color="var(--color-accent)" />
-          </div>
         </div>
 
-        {/* Inside the pinned stage so its upward travel can be driven against
-            scroll rather than happening at page speed.
-
-            Anchored at `top-0` with no vertical centring: GSAP drives `y` here,
-            which rewrites the whole transform, so a Tailwind `-translate-y-1/2`
-            would be wiped the instant the first frame ran. */}
-        {!reducedMotion && (
-          <div
-            ref={dictionaryRef}
-            className="pointer-events-none absolute inset-x-8 top-0 md:inset-x-auto md:right-16 md:w-[42%] md:max-w-140"
-          >
-            {DICTIONARY_CONTENT}
-          </div>
-        )}
+        {/* The falling dots. Children of the stage rather than the track so the
+            camera does not move them, and outside the frame so its clip cannot
+            cut them off. Sized by `measure`, and hidden until the wordmark
+            begins to dissolve — see the phase for why that is not optional. */}
+        {!reducedMotion &&
+          LOGO_DOTS.map((_, i) => (
+            <span
+              key={i}
+              aria-hidden
+              ref={(el) => {
+                dotRefs.current[i] = el;
+              }}
+              className="pointer-events-none invisible absolute top-0 left-0 rounded-full bg-accent"
+            />
+          ))}
       </div>
-
-      {/* Reduced motion only: nothing pins or fades, so the definition follows
-          the stage in normal flow. There must only ever be one of these, since
-          both carry `dictionaryRef`. */}
-      {reducedMotion && (
-        <div className="px-8 pb-24 md:px-16">
-          <RevealBlock className="max-w-md">{DICTIONARY_CONTENT}</RevealBlock>
-        </div>
-      )}
     </section>
   );
 }
