@@ -67,7 +67,7 @@ const HOLD_VH = 30;
  * they came from.
  */
 const LOGO_FADE_AT = DICT_AT + DICT_VH + HOLD_VH;
-const LOGO_FADE_VH = 60;
+const LOGO_FADE_VH = 92;
 
 /**
  * The camera onto the footer.
@@ -181,8 +181,6 @@ const LOGO_FADE_EASE = gsap.parseEase("sine.inOut");
  *   `kick`        a sideways shove at the moment of release, spent within the
  *                 first fifth of the flight, so the dot pops away from the mark
  *                 rather than setting off toward its column.
- *   `wobble`      a fast ring that damps out early — the stored energy leaving.
- *   `lift`        how far it rises before gravity wins, in px.
  *   `restitution` speed kept at each impact, so it sets both bounce height and
  *                 how quickly the dot gives up.
  *   `drift`       a sideways bow across the whole flight, in px at 1440 wide.
@@ -190,9 +188,9 @@ const LOGO_FADE_EASE = gsap.parseEase("sine.inOut");
  *                 that even the lateral travel is not a shared curve.
  */
 const DOT_PHYSICS = [
-  { lift: 18, restitution: 0.55, drift: 18, drag: 2.6, kick: 10, wobble: 3.4, anticipate: 4 },
-  { lift: 14, restitution: 0.5, drift: -13, drag: 3.1, kick: -7, wobble: 2.6, anticipate: 3 },
-  { lift: 20, restitution: 0.58, drift: 22, drag: 2.3, kick: 12, wobble: 3.8, anticipate: 5 },
+  { lift: 18, restitution: 0.85, drift: 18, drag: 2.6, kick: 10, anticipate: 4 },
+  { lift: 14, restitution: 0.90, drift: -13, drag: 3.1, kick: -7, anticipate: 3 },
+  { lift: 20, restitution: 0.95, drift: 22, drag: 2.3, kick: 12, anticipate: 5 },
 ] as const;
 
 /** How far past its slot the dot carries on the first impact, in px. */
@@ -203,12 +201,14 @@ const ANT_SPAN = 0.09;
 const KICK_SPAN = 0.2;
 const PEN_SPAN = 0.035;
 
-/** A single smooth 0 → 1 → 0 bump across [0, span]. */
+/**
+ * A single 0 → 1 → 0 bump across [0, span], squared so it leaves and returns to
+ * zero with zero *slope* as well as zero value. That matters at the moment of
+ * release: a plain sine starts at full speed, so the dot snapped sideways on the
+ * frame it detached instead of easing out of the wordmark.
+ */
 const bump = (p: number, span: number) =>
-  p <= 0 || p >= span ? 0 : Math.sin(Math.PI * (p / span));
-
-/** A fast ring that is spent within the first third of the flight. */
-const ring = (p: number) => Math.sin(Math.PI * 6 * p) * Math.exp(-9 * p);
+  p <= 0 || p >= span ? 0 : Math.sin(Math.PI * (p / span)) ** 2;
 
 /**
  * Impacts before the dot is allowed to be still. Four, because at this
@@ -216,7 +216,7 @@ const ring = (p: number) => Math.sin(Math.PI * 6 * p) * Math.exp(-9 * p);
  * square of the ratio, so 0.55 gives roughly 30%, 9% and 3% of the drop, and
  * only the fourth is genuinely too small to notice.
  */
-const DOT_BOUNCES = 4;
+const DOT_BOUNCES = 2;
 
 /** A settled tail on the end of each fall, as a fraction of its descent. */
 const DOT_REST = 0.08;
@@ -812,8 +812,21 @@ export default function DefinitionSection() {
           const glide = 1 - (1 - p) ** ph.drag;
 
           gsap.set(dot, {
-            // Toggled, never faded — the footer's dots do not animate in.
             visibility: lit ? "visible" : "hidden",
+            // Faded up across the back half of the dissolve, reaching full
+            // exactly as the wordmark reaches zero. Snapping it on at full
+            // opacity instead made the second and third dots glitch: the
+            // overlay sits on the artwork's own dot, and any sub-pixel
+            // difference in size between the two reads as the dot jumping
+            // just as the letterforms start to go. Crossing them over hides
+            // the seam — and it is not an entrance, because at every point in
+            // the window the two together still paint one solid dot.
+            opacity: gsap.utils.clamp(
+              0,
+              1,
+              (vh - (LOGO_FADE_AT + LOGO_FADE_VH * 0.2)) /
+                (LOGO_FADE_VH * 0.8),
+            ),
             xPercent: -50,
             yPercent: -50,
             // Bow, then the release kick, then the ring. The bow rides raw
@@ -823,8 +836,7 @@ export default function DefinitionSection() {
             x:
               gsap.utils.interpolate(d.fromX, d.toX, glide) +
               Math.sin(Math.PI * p) * ph.drift * driftScale +
-              bump(p, KICK_SPAN) * ph.kick +
-              ring(p) * ph.wobble,
+              bump(p, KICK_SPAN) * ph.kick,
             // The solved trajectory, plus the load-up before it — a few px back
             // into the wordmark while the launch is still winding up — plus the
             // give as it hits.
