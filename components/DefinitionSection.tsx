@@ -116,13 +116,19 @@ const SECTION_VH = PIN_VH + 100;
  * HERO_TAIL_VH is the hero's dead tail, between its last phase finishing and its
  * pin releasing. Borrowing it means the dissolve costs no extra scroll. It is the
  * one number here coupled to HeroNarrative — if that tail changes, this must
- * follow, or the fade eats into the hero's last motion.
+ * follow, or the fade eats into the hero's last motion. It tracks that section's
+ * HOLD_VH, which is where the tail is set.
+ *
+ * The hero now washes itself over to this section's gray before releasing, so
+ * this veil fades gray over gray and has nothing left to dissolve. It is kept
+ * anyway, as the cover for the crossing itself: it costs one composited layer,
+ * and it is what stops a mismatch showing if either side's timings move again.
  *
  * VEIL_VH adds the 100vh after that, where the hero's released stage scrolls up
  * and this section's top edge scrolls in — the crossing where the two sections
  * would otherwise both be visible.
  */
-const HERO_TAIL_VH = 25;
+const HERO_TAIL_VH = 15;
 const VEIL_VH = HERO_TAIL_VH + 100;
 
 /**
