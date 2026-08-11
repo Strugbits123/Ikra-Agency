@@ -22,8 +22,8 @@ const BACKGROUND_VISIBLE_AT_DOOR = 0.25;
  *
  * The panels are 58% wide each, so closed they overlap by 16% of the screen and
  * a gap only appears once doorP passes 8/29 ≈ 0.28 — "the doors are moving" and
- * "the doors are visibly opening" are different moments, and the copy is cued
- * off the second (see GAP_LINES).
+ * "the doors are visibly opening" are different moments, and the lead line of
+ * the copy grows on the second (see leadSeat).
  */
 const DOOR_PANEL_W = 0.58;
 const DOOR_REST_X = 0.29;
@@ -32,6 +32,18 @@ const DOOR_REST_Y = 0.73;
 // Derived from the doors rather than restated, so the two cannot drift apart.
 // Tucks 2px under each panel so no rounding can show a hairline between them.
 const BAND_INSET = `calc(${((DOOR_PANEL_W - DOOR_REST_X) * 100).toFixed(2)}% - 2px)`;
+
+/**
+ * The clear span the doors leave between the wedges once they are at rest, as a
+ * fraction of the viewport width.
+ *
+ * Not an independent number, and worth being explicit about because it reads
+ * like one: a wedge is DOOR_PANEL_W − DOOR_REST_X wide and this is whatever the
+ * two of them leave, so it is exactly 1 − 2·wedge. There is one degree of
+ * freedom here, not two — widening the gap *is* shrinking the wedges, and
+ * DOOR_REST_X is the only knob for either.
+ */
+const APERTURE = 1 - 2 * (DOOR_PANEL_W - DOOR_REST_X);
 
 const WAVE_TEXT = "holding your business back";
 // Non-breaking on purpose: SVG collapses runs of ordinary whitespace.
@@ -59,29 +71,93 @@ const holeClip = (p: number) => {
 const SHRINK_VH = 110;
 /** Blank orange: no footage, no copy, nothing but the sealed surface. */
 const BLANK_VH = 20;
-// The doors, and the sequence's spine — the gap copy plays entirely over them,
-// so this window is sized by what the copy needs (see GAP_LINES) and by nothing
-// else. It grew from 175 when the copy went from two lines to three: the doors'
-// path and resting position are untouched, they simply take more scroll to walk
-// it, because there is now half again as much to read on the way.
+// The doors, and the sequence's spine. The lead line of the gap copy is no
+// longer played *over* this window — it *is* this window (see leadSeat), growing
+// out of the point the panels part from and reaching full size exactly as they
+// stop. So what DOOR_VH sizes now is that growth: it is the one knob for how
+// slowly "growth creates a gap" expands. The doors' own path and resting
+// position are untouched, and the two lines behind the lead have moved off this
+// window entirely (see LEAD_OUT_AT), on to scroll of their own.
 const DOOR_AT = SHRINK_VH + BLANK_VH;
 const DOOR_VH = 235;
 const DOOR_END = DOOR_AT + DOOR_VH;
+
+/**
+ * The copy after the doors.
+ *
+ * The lead line arrives *with* the doors and is already seated at full size when
+ * they stop, so what these buy is scroll for the two lines behind it — which
+ * used to share the door opening and now play out on the settled composition
+ * instead, one at a time, with nothing else moving.
+ *
+ * The beats themselves are unchanged; only what they are measured against is.
+ * They were fractions of DOOR_VH (0.15 / 0.04–0.05 / 0.08 of 235vh) and are the
+ * same distances here, written in vh directly because there is no longer a
+ * window for them to be a fraction of.
+ */
+const LEAD_HOLD_VH = 12;
+const COPY_IN_VH = 35;
+const COPY_HOLD_VH = 10;
+const COPY_OUT_VH = 19;
+
+/** The lead line's exit, once the doors have stood at rest for a beat. */
+const LEAD_OUT_AT = DOOR_END + LEAD_HOLD_VH;
+
+/**
+ * Each line rises as the one before it is halfway out — the overlap is what
+ * makes a handover read as one unhurried gesture rather than a swap. It is the
+ * same for all three: the lead line's *exit* is an ordinary exit, and only its
+ * arrival is special.
+ */
+const COPY_STEP_VH = COPY_IN_VH + COPY_HOLD_VH + COPY_OUT_VH / 2;
+
+type GapLine = {
+  text: string;
+  /** null on the lead line: the doors are its arrival (see leadSeat). */
+  in: readonly [number, number] | null;
+  out: readonly [number, number];
+};
+
+/** The nth line behind the lead, placed on that cadence. */
+const follower = (text: string, n: number): GapLine => {
+  const at = LEAD_OUT_AT + COPY_OUT_VH / 2 + n * COPY_STEP_VH;
+  const out = at + COPY_IN_VH + COPY_HOLD_VH;
+  return { text, in: [at, at + COPY_IN_VH], out: [out, out + COPY_OUT_VH] };
+};
+
+/**
+ * The gap copy: three lines that each pass through the same centre seat, one at
+ * a time. Words and timing are one table on purpose — they were two parallel
+ * lists, which is an invitation to add a line without a window or retime a
+ * window against the wrong words. A fourth line is `follower(text, 2)`.
+ */
+const GAP_LINES: GapLine[] = [
+  {
+    text: "growth creates a gap",
+    in: null,
+    out: [LEAD_OUT_AT, LEAD_OUT_AT + COPY_OUT_VH],
+  },
+  follower("between who you've become", 0),
+  follower("how the world sees you", 1),
+];
+
+/** The stage is clear again: the last line has finished leaving. */
+const COPY_END = GAP_LINES[GAP_LINES.length - 1].out[1];
 
 /**
  * The ribbon's draw-in is the one thing here that is NOT scrubbed: crossing
  * either end of the span fires a timed tween that runs to completion, so
  * stopping mid-scroll can never leave half a wave on screen.
  *
- * BAND_LEAD_VH is dead scroll between the doors coming to rest and the wave
- * starting, and it is what keeps the wave and the gap copy off each other's
+ * BAND_LEAD_VH is dead scroll between the last line of copy clearing and the
+ * wave starting, and it is what keeps the wave and the gap copy off each other's
  * screen. Because both tweens run on their own clock, a fast scroll can cross a
  * cue while one is still playing — and scrolling *up*, the close is racing the
- * second gap line back on. This margin is the guarantee, so it has to stay at
+ * last gap line back on. This margin is the guarantee, so it has to stay at
  * least as long as BAND_HIDE_SECONDS takes to scroll through.
  */
 const BAND_LEAD_VH = 25;
-const BAND_DRAW_AT = DOOR_END + BAND_LEAD_VH;
+const BAND_DRAW_AT = COPY_END + BAND_LEAD_VH;
 const BAND_HOLD_VH = 60;
 const BAND_CLOSE_AT = BAND_DRAW_AT + BAND_HOLD_VH;
 const BAND_DRAW_SECONDS = 0.9;
@@ -170,13 +246,17 @@ const ramp = (p: number, [from, to]: readonly [number, number]) =>
   gsap.utils.clamp(0, 1, (p - from) / (to - from));
 
 /**
- * Both lines of the gap copy pass through one seat at the centre of the stage.
- * The two ends of that travel are deliberately not mirror images: a line settles
- * into the seat from just below, barely smaller and barely soft, and leaves by
- * climbing away while shrinking hard and blurring out.
+ * The gap copy shares one seat at the centre of the stage. The two ends of that
+ * travel are deliberately not mirror images: a line settles into the seat from
+ * just below, barely smaller and barely soft, and leaves by climbing away while
+ * shrinking hard and blurring out.
  *
- * `y` is a fraction of the viewport height, not of the element, so both lines
- * travel the same distance despite the second being twice as tall.
+ * Every line *leaves* that way, the lead line included. It is only the arrival
+ * the lead line does differently — it grows into the seat with the doors instead
+ * (see leadSeat).
+ *
+ * `y` is a fraction of the viewport height, not of the element, so every line
+ * travels the same distance despite them not being the same height.
  */
 const STACK_IN_END = { y: 0.08, scale: 0.82, blur: 3 };
 const STACK_OUT_END = { y: -0.12, scale: 0.45, blur: 6 };
@@ -184,34 +264,12 @@ const STACK_IN = gsap.parseEase("power1.out");
 const STACK_OUT = gsap.parseEase("power1.in");
 
 /**
- * The gap copy: three lines that each climb through the same centre seat, one at
- * a time. Words and timing are one table on purpose — they were two parallel
- * lists, which is an invitation to add a line without a window or retime a
- * window against the wrong words.
- *
- * `in`/`out` are fractions of the *door opening*, not of the pin, because the
- * copy is a consequence of the orange parting and has to stay pinned to it
- * however DOOR_VH is retuned.
- *
- * Nothing before 26%, since the panels are only clear of each other at
- * DOOR_SEALED_AT (~28%) and anything earlier fades up over unbroken orange. The
- * last window runs to exactly 100% — the doors coming to rest — which it can
- * because BAND_LEAD_VH puts dead scroll between the copy and the wave, so the
- * copy owns the whole opening and the two never share the screen either way.
- *
- * Every line gets the same shape, which is the point: each arrival is the
- * longest beat it has (the eye is waiting for it, and a fast scroll used to make
- * it pop in), each hold is the shortest, and each exit overlaps the next
- * arrival by half its length so a handover reads as one unhurried gesture rather
- * than a swap. Three lines in the window two used to have is what DOOR_VH was
- * lengthened for — at the old 175vh these arrivals came out at ~25vh each,
- * which is exactly the pop the timing was widened to remove.
+ * How much of the lead line's growth is spent fading up. It grows out of a
+ * literal point, so without this it arrives as a speck on the orange; a fade
+ * across the first slice of the growth resolves it out of the surface instead.
+ * 0.18 of the growth is ~30vh, i.e. one ordinary arrival's worth of scroll.
  */
-const GAP_LINES = [
-  { text: "growth creates a gap", in: [0.26, 0.4], out: [0.45, 0.53] },
-  { text: "between who you've become", in: [0.49, 0.64], out: [0.68, 0.76] },
-  { text: "how the world sees you", in: [0.72, 0.87], out: [0.92, 1.0] },
-] as const;
+const GROW_FADE = 0.18;
 
 /**
  * One line's state in that seat. `away` is the single travel axis — 1 waiting
@@ -235,6 +293,37 @@ function stackSeat(viewportH: number, inP: number, outP: number) {
     // Dropped entirely once seated rather than left at blur(0): any filter at
     // all costs subpixel antialiasing for the whole time the copy is readable.
     filter: blur > 0.01 ? `blur(${blur.toFixed(2)}px)` : "none",
+  };
+}
+
+/**
+ * The lead line's seat. It grows out of the point the doors part from, on the
+ * *aperture's* progress rather than a window of its own, so the two are one
+ * gesture and land together by construction rather than by being kept in step.
+ *
+ * That progress is deliberately unaeased. The panels travel linearly, so the gap
+ * between them widens linearly, and the line's rendered width is linear in
+ * `growP` — which means the copy fills the same fraction of the opening at every
+ * frame, and reaches full size on the frame the panels stop. Any ease here would
+ * put the text ahead of or behind the doors, which is the one thing this is for.
+ *
+ * Only the arrival is written here: the exit is an ordinary one, stackSeat's,
+ * from fully seated. The two meet exactly — growth finished with outP 0 is
+ * scale 1, y 0, opacity 1 and no filter in both — so the handover is a
+ * continuation rather than a switch.
+ */
+function leadSeat(viewportH: number, growP: number, outP: number) {
+  if (outP > 0) return stackSeat(viewportH, 1, outP);
+  return {
+    xPercent: -50,
+    yPercent: -50,
+    y: 0,
+    scale: growP,
+    opacity: gsap.utils.clamp(0, 1, growP / GROW_FADE),
+    // No blur on this arrival, unlike the others': theirs is carried for a 35vh
+    // beat, this one would be carried for the whole door opening, and a filter
+    // costs subpixel antialiasing for every frame it is on.
+    filter: "none",
   };
 }
 
@@ -513,6 +602,58 @@ function WavyBand({ g, animate }: { g: BandGeometry; animate: boolean }) {
 }
 
 /**
+ * How many ems wide the lead line is. Measured, not guessed: summing the advance
+ * widths in public/fonts/ZalandoSansSemiExpanded-VariableFont_wght.ttf, with the
+ * HVAR deltas applied for weight 500 — `font-medium`, which is what this
+ * actually renders at, and 1.4% wider than the font's default 400 instance —
+ * gives 10.791em for "growth creates a gap". Kerning only ever subtracts, so
+ * taking the advance sum as the width errs in the safe direction. Re-measure if
+ * the wording changes.
+ */
+const GAP_LEAD_EMS = 10.8;
+
+/**
+ * Clearance between the lead line's ends and the wedges' inner edges, as a share
+ * of the aperture on each side.
+ *
+ * A share rather than a pixel count on purpose. The line's width and the gap's
+ * width are both linear in the growth's progress (see leadSeat), so a
+ * proportional margin is the *same* margin at every frame — the copy sits inside
+ * the opening from the moment it appears, not merely once the doors have
+ * stopped.
+ */
+const GAP_COPY_INSET = 0.07;
+
+/**
+ * The gap copy's size, solved from the span it has to sit in rather than
+ * declared — for exactly the reason the closing line's is (see LEAP_EMS). The
+ * aperture is a fraction of the viewport and a declared size is not, so any
+ * fixed size is only right at one width: a flat `md:text-[60px]` is 647px of
+ * line against a 605px gap at 1440 and a 430px gap at 1024, which put the ends
+ * on the orange at every laptop size there is.
+ *
+ * The ceiling is that same 60px, so the widest screens are unchanged; the floor
+ * is the old mobile size, so phones are unchanged too. Between them — roughly
+ * 700px to 1200px — the floor binds and the line still overhangs, because the
+ * gap is simply too narrow for this many words at a readable size. That is the
+ * same concession LEAP_EMS's clamp already makes, in the same place.
+ *
+ * Solved from the *lead* line alone, not the longest of the three. It is the one
+ * locked to the aperture, so it is the one whose fit is read frame by frame;
+ * sizing to "between who you've become" instead would put the whole statement at
+ * ~35px on a 1440 screen. The other two still cross onto the wedges as they
+ * always have, but by far less, since they shrink along with it.
+ */
+const GAP_COPY_MIN_PX = 40;
+const GAP_COPY_MAX_PX = 60;
+const gapCopyFontSize = (stageW: number) =>
+  gsap.utils.clamp(
+    GAP_COPY_MIN_PX,
+    GAP_COPY_MAX_PX,
+    (APERTURE * stageW * (1 - 2 * GAP_COPY_INSET)) / GAP_LEAD_EMS,
+  );
+
+/**
  * `overlay` stacks every line in the same seat at the centre of the stage, so
  * each takes the last one's place rather than sitting beneath it. Positioning is
  * left entirely to GSAP (see `stackSeat`), which drives `yPercent` and would
@@ -527,16 +668,26 @@ function WavyBand({ g, animate }: { g: BandGeometry; animate: boolean }) {
  */
 function GapCopy({
   overlay = false,
+  fontSize,
   lineRefs,
 }: {
   overlay?: boolean;
+  fontSize?: number;
   lineRefs?: { current: (HTMLParagraphElement | null)[] };
 }) {
   // One class string for all of them: they are parts of one statement in the
   // same seat, so any difference in size or weight reads as a replacement rather
-  // than the sentence carrying on. The max-width only fixes where the longest
-  // line wraps; GSAP centres on the element's own width, so it stays centred.
-  const line = `w-full max-w-[1500px] text-[40px] leading-[1.15] font-medium text-ink md:text-[60px]`;
+  // than the sentence carrying on. That is why the solved size below is shared
+  // by all three even though only the lead line's fit is what solves it — a line
+  // arriving at a different size than the one it replaces is the exact seam this
+  // avoids. The max-width only fixes where the longest line wraps; GSAP centres
+  // on the element's own width, so it stays centred.
+  //
+  // The class-based sizes are the reduced-motion rendering only: there the copy
+  // is a static column at the top of the stage rather than seated in the gap, so
+  // there is no span to solve it against.
+  const line = `w-full max-w-[1500px] leading-[1.15] font-medium text-ink ${fontSize === undefined ? "text-[40px] md:text-[60px]" : ""
+    }`;
   const seat = overlay
     ? "absolute top-1/2 left-1/2 px-8 text-center"
     : "";
@@ -553,6 +704,7 @@ function GapCopy({
               : undefined
           }
           className={`${seat} ${overlay || i === 0 ? "" : "mt-5"} ${line}`}
+          style={fontSize === undefined ? undefined : { fontSize }}
         >
           {text}
         </p>
@@ -602,46 +754,48 @@ const LEAP_COPY = (
  *             statements.
  *  130–365vh  the doors open diagonally (right up-and-right, left down-and-left)
  *             and stop partway, leaving wedges in the bottom-left and top-right
- *             corners for good. The gap copy plays over them — three lines
- *             through one centre seat, their beats being fractions of this
- *             window (see GAP_LINES):
- *              +0–26%  no copy — the panels overlap until 28%, so there is
- *                      nothing to see yet.
- *             +26–40%  "growth creates a gap" fades up into the seat, slowly —
- *                      this is the beat a fast scroll used to rush.
- *             +40–45%  it holds while the orange keeps parting.
- *             +45–53%  it climbs away, shrinking and blurring out.
- *             +49–64%  "between who you've become" rises into the same seat as
- *                      the first leaves it — the overlap is what makes an
- *                      exchange one gesture rather than a swap.
- *             +64–68%  it holds.
- *             +68–76%  it climbs away.
- *             +72–87%  "how the world sees you" rises in behind it, on exactly
- *                      the same overlap.
- *             +87–92%  it holds.
- *            +92–100%  it climbs away, clearing the stage as the doors stop.
- *  365–390vh  dead scroll, so the copy is gone before the wave starts and the
+ *             corners for good. "growth creates a gap" is not played over that
+ *             opening — it *is* the opening:
+ *  130–195vh    nothing on screen. The panels are 58% wide each, so they are
+ *               still overlapping and no gap has appeared yet.
+ *  195–365vh    the line grows out of the centre point they part from, its
+ *               width locked to the gap's in constant proportion, so it reads
+ *               as being pushed open by them (see leadSeat). It fades up over
+ *               the first 31vh of that — one ordinary arrival's worth — so it
+ *               resolves out of the orange instead of arriving as a speck, and
+ *               it reaches full size on the frame the panels stop.
+ *  365–377vh  it holds at full size, doors at rest, nothing else moving.
+ *  377–396vh  it climbs away, shrinking and blurring out — an ordinary exit.
+ *  387–422vh  "between who you've become" rises into the seat as the lead line
+ *             leaves it; the overlap is what makes an exchange one gesture
+ *             rather than a swap.
+ *  422–432vh  it holds.
+ *  432–451vh  it climbs away.
+ *  441–476vh  "how the world sees you" rises in behind it, on the same overlap.
+ *  476–486vh  it holds.
+ *  486–505vh  it climbs away, clearing the stage.
+ *  505–530vh  dead scroll, so the copy is gone before the wave starts and the
  *             wave is gone before the copy comes back (see BAND_LEAD_VH).
- *  390–450vh  the wavy ribbon draws in right-to-left (a clip, not a fade),
+ *  530–590vh  the wavy ribbon draws in right-to-left (a clip, not a fade),
  *             bridging the two wedges, then closes the same way round. Neither
  *             half is scroll-driven — see BAND_DRAW_AT.
- *  485–517vh  "until you make the leap" fades up into the space the ribbon
+ *  625–657vh  "until you make the leap" fades up into the space the ribbon
  *             vacated, at the same seat and sized to the same span.
- *  517–555vh  it holds.
- *  555–680vh  the doors close, retracing their opening exactly. The line recedes
+ *  657–695vh  it holds.
+ *  695–820vh  the doors close, retracing their opening exactly. The line recedes
  *             across the first 91vh of that — scaling to nothing at full opacity,
  *             never fading — and reaches zero exactly as the panels meet
- *             (~646vh), so it goes back through the gap rather than dissolving.
- *     ~646vh  the panels meet: from here the stage is one unbroken orange
+ *             (~786vh), so it goes back through the gap rather than dissolving.
+ *     ~786vh  the panels meet: from here the stage is one unbroken orange
  *             surface and the rest of their travel has no visible edges in it.
- *      661vh  the sealed orange washes over to the next section's gray. Cued
+ *      801vh  the sealed orange washes over to the next section's gray. Cued
  *             here rather than at the doors' stop for that reason — waiting
  *             would shorten the flat-orange stall instead of removing it. Not
  *             scrolled through: crossing the cue fires a timed tween that runs
  *             to completion, like the ribbon, so it is one continuous move at
  *             one speed and no stopping place can leave it half done. The 15vh
  *             of lead is margin for the reverse (see GRAY_LEAD_VH).
- *  696–711vh  a short hold on flat gray before the pin releases. Gray and not
+ *  836–851vh  a short hold on flat gray before the pin releases. Gray and not
  *             orange is the point: the stage now scrolls away into a section of
  *             its own colour, so there is no seam left to hide.
  *
@@ -935,25 +1089,32 @@ export default function HeroNarrative() {
           // --- Phase 2: blank orange (110 – 130vh) — no code, it exists because
           // the phase before ended at SHRINK_VH and the next begins at DOOR_AT.
 
-          // --- Phase 3: the doors, and the copy that plays over them ---
+          // --- Phase 3: the doors, and the copy they hand over to ---
           // `doorP` is the spine of everything to 365vh: the panels move on it,
-          // and every copy beat is a fraction of it (GAP_LINES), so the two can
-          // never drift out of step however the window is retuned.
+          // and so does the lead line of the copy.
           const doorP = ramp(vh, [DOOR_AT, DOOR_END]);
 
-          // Every line climbs through the same centre seat, each rising into it
-          // as the one before leaves upward (see stackSeat). Driven straight off
-          // GAP_LINES rather than line by line, so the choreography is identical
-          // across all of them by construction — there is no per-line code left
-          // for a third line to be accidentally left out of.
+          // The aperture rather than the panels. They are DOOR_PANEL_W wide
+          // each, so they overlap until DOOR_SEALED_AT and nothing has opened
+          // before that — this is 0 the instant a gap appears and 1 when the
+          // doors come to rest, which is exactly the span the lead line grows
+          // across (see leadSeat).
+          const gapP = ramp(doorP, [DOOR_SEALED_AT, 1]);
+
+          // Every line passes through the same centre seat, each rising into it
+          // as the one before leaves upward (see stackSeat) — except the lead
+          // line, which grows into it with the doors and then leaves like the
+          // rest. Driven straight off GAP_LINES rather than line by line, so the
+          // choreography is identical across all of them by construction: there
+          // is no per-line code left for a line to be accidentally left out of.
           for (let i = 0; i < GAP_LINES.length; i++) {
+            const line = GAP_LINES[i];
+            const outP = STACK_OUT(ramp(vh, line.out));
             gsap.set(
               gapLineRefs.current[i],
-              stackSeat(
-                H,
-                STACK_IN(ramp(doorP, GAP_LINES[i].in)),
-                STACK_OUT(ramp(doorP, GAP_LINES[i].out)),
-              ),
+              line.in
+                ? stackSeat(H, STACK_IN(ramp(vh, line.in)), outP)
+                : leadSeat(H, gapP, outP),
             );
           }
 
@@ -961,8 +1122,8 @@ export default function HeroNarrative() {
           // stay hidden until the first onUpdate has seated them.
           gsap.set(contentRef.current, { opacity: 1 });
 
-          // The panels, opening on doorP (130 – 305vh) and closing again at the
-          // end (487 – 612vh). Each slides out while drifting vertically, the
+          // The panels, opening on doorP (130 – 365vh) and closing again at the
+          // end (695 – 820vh). Each slides out while drifting vertically, the
           // drift finishing ahead of the slide (hence `/0.7`).
           //
           // The close is not a second animation: `doorNow` is the opening's own
@@ -998,14 +1159,14 @@ export default function HeroNarrative() {
             }
           }
 
-          // --- Phase 4: the ribbon draws in, holds, and clears (330 – 390vh) ---
+          // --- Phase 4: the ribbon draws in, holds, and clears (530 – 590vh) ---
           // Not scrubbed: each end of the span fires a tween that runs to
           // completion on its own clock, so the wedges are always at rest before
           // it starts and it can never be left frozen half-drawn. Expressed as a
           // span so it behaves the same crossed either way.
           drawBand(vh >= BAND_DRAW_AT && vh < BAND_CLOSE_AT);
 
-          // --- Phase 5: the closing line takes its place (425 – 585vh) ---
+          // --- Phase 5: the closing line takes its place (625 – 786vh) ---
           // Seated where the ribbon was, not below it, so the wave resolves into
           // the words. It arrives like the gap copy but recedes instead of fading
           // (see leapSeat), scaling to nothing across the door close so it reads
@@ -1023,9 +1184,9 @@ export default function HeroNarrative() {
             ),
           );
 
-          // --- Phase 6: the doors close (555 – 680vh), driven above ---
+          // --- Phase 6: the doors close (695 – 820vh), driven above ---
 
-          // --- Phase 7: orange turns over to gray (fires at 661vh) ---
+          // --- Phase 7: orange turns over to gray (fires at 801vh) ---
           // Cued just past SEALED_AT rather than off the door close, because the
           // panels seal 34vh before they stop moving and all of that is travel
           // with no visible edges in it — waiting for the doors to finish would
@@ -1267,7 +1428,11 @@ export default function HeroNarrative() {
               ref={contentRef}
               className="pointer-events-none absolute inset-0 z-30 opacity-0"
             >
-              <GapCopy overlay lineRefs={gapLineRefs} />
+              <GapCopy
+                overlay
+                lineRefs={gapLineRefs}
+                fontSize={gapCopyFontSize(stageBox.w)}
+              />
             </div>
           )}
 
