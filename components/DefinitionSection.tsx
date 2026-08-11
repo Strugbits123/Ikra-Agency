@@ -430,6 +430,79 @@ const FOOTER_COLUMNS = [
 ];
 
 /**
+ * The footer's contents resolving in as the camera brings them up.
+ *
+ * Driven off the camera's own progress rather than a clock or an observer of its
+ * own, and that is the whole design. The footer sits a fixed distance below the
+ * frame, so how far the camera has travelled *is* how much of the footer is on
+ * screen — which makes this synchronised with the arrival on every viewport
+ * without measuring anything, and makes "when the footer enters the viewport"
+ * exactly what it is keyed to. Since the camera is inside the timed tail (see
+ * TAIL_AT) the reveal inherits its two useful properties for free: it always
+ * runs to completion, and it cannot re-fire or flicker on small scrolls, because
+ * there is nothing scrubbed left for a small scroll to move.
+ *
+ * The last item finishes exactly as the camera stops, which puts the whole
+ * reveal before the earliest possible touchdown — the dots' release is placed so
+ * that none of them can land before then (see DROP_MARGIN_SECONDS). That
+ * ordering is not decoration: the dots land *on* these columns, and a column
+ * still resolving underneath one is the same wrong note as a column still
+ * moving underneath one.
+ *
+ * Opacity only, deliberately — no rise, no scale. The dots aim at slots measured
+ * out of this layout, and a transform here would move them on screen without
+ * moving what was measured, so every landing would be off by however far the
+ * reveal still had to travel. It is also why nothing here disturbs `measure`:
+ * opacity is the one visual change that costs no geometry.
+ */
+/**
+ * The footer's contents resolving in — on the SCROLL clock, and the only thing
+ * past TAIL_AT that is. Everything else there runs on a timer, for reasons set
+ * out at TAIL_AT; this is the exception, and deliberately.
+ *
+ * The camera's arrival takes PAN_SECONDS, but the reader then spends the whole
+ * of TAIL_VH coming down into the footer — 180vh against nine tenths of a
+ * second. Anything keyed to the camera is therefore finished while they are
+ * still a screen and a half away from where they stop, which is why two
+ * successive attempts at this were invisible: the fade was never wrong, it was
+ * just always over before anyone was looking at what it had revealed. Tied to
+ * the scroll instead, it plays out across the approach, which is what "fades in
+ * as you get closer" has to mean here.
+ *
+ * A fade is also the one thing in the tail that survives being scrubbed. Frozen
+ * half way it holds a pose — a subdued footer is a state a reader can look at,
+ * where a ball stopped between two bounces is not — so it can take the scroll
+ * clock without picking up the defect that put the rest of the tail on a timer.
+ * Being scrubbed is what lets it play again, too: scroll back up and the items
+ * fade out, come down and they resolve a second time.
+ *
+ * The dots land on the slots, which sit *above* each heading and are invisible —
+ * they only reserve the pad. So nothing a dot touches is being faded, and an
+ * earlier worry about landing on a half-resolved column was misplaced: the dot
+ * arrives first and the words settle in beneath it, which is a reading rather
+ * than a collision.
+ */
+const FOOTER_REVEAL_AT = TAIL_AT + 12;
+const FOOTER_REVEAL_STAGGER_VH = 14;
+
+/** Settled footer at the bottom of the page, once everything has resolved. */
+const FOOTER_SETTLE_VH = 40;
+
+/**
+ * Each item's own fade, solved backwards from that: long enough to fill the
+ * approach, and finished with room to spare before the pin lets go. Retuning the
+ * stagger or the start moves this rather than eating into the settled tail.
+ */
+const FOOTER_REVEAL_VH =
+  TAIL_VH -
+  FOOTER_SETTLE_VH -
+  (FOOTER_REVEAL_AT - TAIL_AT) -
+  (FOOTER_COLUMNS.length) * FOOTER_REVEAL_STAGGER_VH;
+
+/** No accent at either end, same as the wordmark's dissolve. */
+const FOOTER_REVEAL_EASE = gsap.parseEase("sine.inOut");
+
+/**
  * The editorial statement, with the round photo and the "ikra." wordmark stacked
  * below it, the wordmark layered over the photo — and then the wordmark's own
  * dots carrying the page into the footer.
@@ -474,9 +547,16 @@ const FOOTER_COLUMNS = [
  *             it is crossed back. See TAIL_AT for why this one stretch cannot be
  *             scroll-driven: every earlier phase holds a pose when the scroll
  *             stops, and a thrown ball does not.
- *      0–0.9s the camera pans down the track onto the footer. The footer has no
- *             entrance of its own — it is already sitting there in the layout,
+ *      0–0.9s the camera pans down the track onto the footer. Nothing there
+ *             moves under its own power: it is already sitting in the layout,
  *             and this is the page arriving at it.
+ *  434–562vh  its columns resolve from transparent, staggered — back on the
+ *             scroll clock, and the only part of the tail that is. The camera
+ *             takes under a second while the reader takes 180vh of scroll to
+ *             come down into the footer, so a fade tied to the camera is spent
+ *             before anyone is looking at it (see FOOTER_REVEAL_AT). Finishes
+ *             40vh before the pin lets go, so the last of the page is a settled
+ *             footer rather than one still arriving.
  *   ~0.7–2.8s the dots fall — all three released together, on a moment solved
  *             per viewport (see `measure`) so the beat before it is only as long
  *             as the camera needs. Not an interpolation with a bounce ease on
@@ -508,6 +588,7 @@ export default function DefinitionSection() {
   const markRef = useRef<HTMLDivElement>(null);
   const dictionaryRef = useRef<HTMLDivElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
+  const revealRefs = useRef<(HTMLDivElement | null)[]>([]);
   const slotRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const dotRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -890,6 +971,25 @@ export default function DefinitionSection() {
 
         paintDots();
 
+        // --- Phase 8b: the footer's contents resolve in as the reader comes
+        // down into it. On this clock rather than the tail's, and spread across
+        // the whole approach rather than the camera's nine tenths of a second —
+        // see FOOTER_REVEAL_AT for why that distinction is the entire fix.
+        for (let i = 0; i < revealRefs.current.length; i++) {
+          const el = revealRefs.current[i];
+          if (!el) continue;
+          gsap.set(el, {
+            opacity: FOOTER_REVEAL_EASE(
+              gsap.utils.clamp(
+                0,
+                1,
+                (vh - (FOOTER_REVEAL_AT + i * FOOTER_REVEAL_STAGGER_VH)) /
+                FOOTER_REVEAL_VH,
+              ),
+            ),
+          });
+        }
+
         // --- Phase 8: the tail is cued, and from here it is on its own clock.
         // A threshold rather than a span, crossed in either direction, latched
         // inside runTail — so this is the last thing scroll has any say over.
@@ -913,6 +1013,7 @@ export default function DefinitionSection() {
         // --- the camera pans onto the footer (0 – 0.9s) ---
         const panP = PAN_EASE(gsap.utils.clamp(0, 1, t / PAN_SECONDS));
         gsap.set(track, { y: panP * m.camEnd });
+
 
         // --- the dots fall (from m.releaseAt) ---
         //
@@ -1378,9 +1479,14 @@ export default function DefinitionSection() {
             </div>
           )}
 
-          {/* Screen two: the footer. Entirely static — no entrance of its own,
-              by design. It is already sitting here in the layout; the camera
-              pans onto it and the dots arrive, and that is the whole reveal.
+          {/* Screen two: the footer. It never *moves* under its own power — no
+              slide, no rise, no entrance of its own. It is already sitting here
+              in the layout; the camera pans onto it and the dots arrive, and
+              that is the whole reveal. The one thing it does do is resolve from
+              transparent as the camera brings it up (see FOOTER_REVEAL_FROM),
+              which is a change of ink rather than of position, and so leaves
+              that intact — nothing here is anywhere it was not always going
+              to be.
 
               Deliberately *not* h-screen. Its own content height is what the
               camera's travel is measured from, so on a desktop it settles into
@@ -1404,7 +1510,19 @@ export default function DefinitionSection() {
             <div className="mx-auto w-full max-w-7xl">
               <div className="grid gap-7 md:grid-cols-3 md:gap-10 lg:gap-14">
                 {FOOTER_COLUMNS.map((col, i) => (
-                  <div key={col.heading}>
+                  /* Hidden from the first paint rather than only from the first
+                     render pass: the stage clips this away until the camera
+                     moves, so nothing would show anyway — but a restored scroll
+                     position lands mid-section, and this costs one attribute.
+                     Left alone under reduced motion, where no camera runs and
+                     the footer is simply part of the page. */
+                  <div
+                    key={col.heading}
+                    ref={(el) => {
+                      revealRefs.current[i] = el;
+                    }}
+                    style={reducedMotion ? undefined : { opacity: 0 }}
+                  >
                     {/* The landing pad, not the dot. It reserves the space and
                         is what `measure` reads the destination and the final
                         size from; the dot that ends up sitting in it fell here.
@@ -1439,7 +1557,13 @@ export default function DefinitionSection() {
               {/* Hidden below md, where the three stacked columns already run
                   the full height of the frame and this would only be clipped
                   off the bottom by the camera's own clamp. */}
-              <div className="mt-12 hidden border-t border-ink/15 pt-5 text-sm font-light text-ink/55 md:flex md:items-center md:justify-between">
+              <div
+                ref={(el) => {
+                  revealRefs.current[FOOTER_COLUMNS.length] = el;
+                }}
+                style={reducedMotion ? undefined : { opacity: 0 }}
+                className="mt-12 hidden border-t border-ink/15 pt-5 text-sm font-light text-ink/55 md:flex md:items-center md:justify-between"
+              >
                 <p>© {new Date().getFullYear()} ikra studio. All rights reserved.</p>
                 <p>Rebranding agency for the most discerning ambitions.</p>
               </div>
