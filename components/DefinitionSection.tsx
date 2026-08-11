@@ -456,49 +456,36 @@ const FOOTER_COLUMNS = [
  * opacity is the one visual change that costs no geometry.
  */
 /**
- * The footer's contents resolving in — on the SCROLL clock, and the only thing
- * past TAIL_AT that is. Everything else there runs on a timer, for reasons set
- * out at TAIL_AT; this is the exception, and deliberately.
+ * The footer's contents resolving in — on the tail's clock, across exactly the
+ * span the dots spend in the air.
  *
- * The camera's arrival takes PAN_SECONDS, but the reader then spends the whole
- * of TAIL_VH coming down into the footer — 180vh against nine tenths of a
- * second. Anything keyed to the camera is therefore finished while they are
- * still a screen and a half away from where they stop, which is why two
- * successive attempts at this were invisible: the fade was never wrong, it was
- * just always over before anyone was looking at what it had revealed. Tied to
- * the scroll instead, it plays out across the approach, which is what "fades in
- * as you get closer" has to mean here.
+ * Tied to the falls rather than given a window of its own, so the two are one
+ * gesture and cannot drift: the dots let go and the footer begins to resolve;
+ * the last dot settles and the footer is finished. One ending, one reading. That
+ * also means there is nothing to keep in sync — it reads m.releaseAt and
+ * DROP_SECONDS, the same two numbers the falls do.
  *
- * A fade is also the one thing in the tail that survives being scrubbed. Frozen
- * half way it holds a pose — a subdued footer is a state a reader can look at,
- * where a ball stopped between two bounces is not — so it can take the scroll
- * clock without picking up the defect that put the rest of the tail on a timer.
- * Being scrubbed is what lets it play again, too: scroll back up and the items
- * fade out, come down and they resolve a second time.
+ * All of it together, with no stagger, and the stagger was the defect. Spreading
+ * four items across a window guarantees a stretch where some are resolved and
+ * others are not, which is precisely the half-finished state this exists to
+ * avoid — the same defect the dots had before their release was made
+ * simultaneous, and removed for the same reason. Nothing is lost: a stagger
+ * across four blocks of text at this size reads as unevenness rather than as
+ * choreography, and the whole footer resolving as one is a larger, plainer event
+ * than four pieces arriving in turn.
+ *
+ * It runs to completion, being on that clock, so no stopping place leaves the
+ * footer part-resolved for longer than the gesture has left to play.
  *
  * The dots land on the slots, which sit *above* each heading and are invisible —
- * they only reserve the pad. So nothing a dot touches is being faded, and an
- * earlier worry about landing on a half-resolved column was misplaced: the dot
- * arrives first and the words settle in beneath it, which is a reading rather
- * than a collision.
+ * they only reserve the pad. So nothing a dot touches is being faded.
+ *
+ * Opacity only, deliberately — no rise, no scale. The dots aim at slots measured
+ * out of this layout, and a transform here would move them on screen without
+ * moving what was measured, so every landing would be off by however far the
+ * reveal still had to travel. It is also why nothing here disturbs `measure`:
+ * opacity is the one visual change that costs no geometry.
  */
-const FOOTER_REVEAL_AT = TAIL_AT + 12;
-const FOOTER_REVEAL_STAGGER_VH = 14;
-
-/** Settled footer at the bottom of the page, once everything has resolved. */
-const FOOTER_SETTLE_VH = 40;
-
-/**
- * Each item's own fade, solved backwards from that: long enough to fill the
- * approach, and finished with room to spare before the pin lets go. Retuning the
- * stagger or the start moves this rather than eating into the settled tail.
- */
-const FOOTER_REVEAL_VH =
-  TAIL_VH -
-  FOOTER_SETTLE_VH -
-  (FOOTER_REVEAL_AT - TAIL_AT) -
-  (FOOTER_COLUMNS.length) * FOOTER_REVEAL_STAGGER_VH;
-
 /** No accent at either end, same as the wordmark's dissolve. */
 const FOOTER_REVEAL_EASE = gsap.parseEase("sine.inOut");
 
@@ -550,13 +537,13 @@ const FOOTER_REVEAL_EASE = gsap.parseEase("sine.inOut");
  *      0–0.9s the camera pans down the track onto the footer. Nothing there
  *             moves under its own power: it is already sitting in the layout,
  *             and this is the page arriving at it.
- *  434–562vh  its columns resolve from transparent, staggered — back on the
- *             scroll clock, and the only part of the tail that is. The camera
- *             takes under a second while the reader takes 180vh of scroll to
- *             come down into the footer, so a fade tied to the camera is spent
- *             before anyone is looking at it (see FOOTER_REVEAL_AT). Finishes
- *             40vh before the pin lets go, so the last of the page is a settled
- *             footer rather than one still arriving.
+ *   ~0.5–2.8s its contents resolve from transparent — all of it as one, over
+ *             exactly the span the dots are in the air, so the falls and the
+ *             footer are one gesture with one ending. No stagger, deliberately:
+ *             staggering guarantees frames where part of the footer has resolved
+ *             and part has not. Most of it plays after the camera has stopped,
+ *             which is the point — a fade that fits inside the pan is spent
+ *             while the footer is still rising.
  *   ~0.7–2.8s the dots fall — all three released together, on a moment solved
  *             per viewport (see `measure`) so the beat before it is only as long
  *             as the camera needs. Not an interpolation with a bounce ease on
@@ -971,25 +958,6 @@ export default function DefinitionSection() {
 
         paintDots();
 
-        // --- Phase 8b: the footer's contents resolve in as the reader comes
-        // down into it. On this clock rather than the tail's, and spread across
-        // the whole approach rather than the camera's nine tenths of a second —
-        // see FOOTER_REVEAL_AT for why that distinction is the entire fix.
-        for (let i = 0; i < revealRefs.current.length; i++) {
-          const el = revealRefs.current[i];
-          if (!el) continue;
-          gsap.set(el, {
-            opacity: FOOTER_REVEAL_EASE(
-              gsap.utils.clamp(
-                0,
-                1,
-                (vh - (FOOTER_REVEAL_AT + i * FOOTER_REVEAL_STAGGER_VH)) /
-                FOOTER_REVEAL_VH,
-              ),
-            ),
-          });
-        }
-
         // --- Phase 8: the tail is cued, and from here it is on its own clock.
         // A threshold rather than a span, crossed in either direction, latched
         // inside runTail — so this is the last thing scroll has any say over.
@@ -1013,6 +981,19 @@ export default function DefinitionSection() {
         // --- the camera pans onto the footer (0 – 0.9s) ---
         const panP = PAN_EASE(gsap.utils.clamp(0, 1, t / PAN_SECONDS));
         gsap.set(track, { y: panP * m.camEnd });
+
+        // --- and its contents resolve in, over exactly the dots' flight ---
+        // One value for all of them: the whole footer is always at one opacity,
+        // so there is no frame where some of it has resolved and the rest has
+        // not. It outlasts the camera by more than a second, which is the point —
+        // a fade that fits inside the pan is spent while the footer is still
+        // rising and over before there is anything settled to look at.
+        const revealP = FOOTER_REVEAL_EASE(
+          gsap.utils.clamp(0, 1, (t - m.releaseAt) / DROP_SECONDS),
+        );
+        for (const el of revealRefs.current) {
+          if (el) gsap.set(el, { opacity: revealP });
+        }
 
 
         // --- the dots fall (from m.releaseAt) ---
