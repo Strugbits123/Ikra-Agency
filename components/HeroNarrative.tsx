@@ -967,6 +967,10 @@ export default function HeroNarrative() {
       // headline — which exist purely to be animated — are hidden here. The
       // centre copy renders as a plain static column instead (see the JSX).
       // The logo stays visible: it's the page header, not an animated aside.
+      // It renders hidden because nothing knows which mode this is until after
+      // mount, so showing it is this branch's job — there is no load timeline
+      // here to do it.
+      gsap.set(logo, { opacity: 1 });
       gsap.set(headline, { xPercent: -50, yPercent: -50, opacity: 0 });
       gsap.set(box, { opacity: 0 });
       introDoneRef.current = true;
@@ -985,8 +989,11 @@ export default function HeroNarrative() {
       // Neither of these touches a transform, so the Tailwind translate
       // classes keep doing the centering untouched.
       gsap.set(box, { clipPath: holeClip(0), opacity: 0 });
-      // The header logo, same treatment: it would otherwise render at full
-      // opacity on the very first frame, before anything else has appeared.
+      // The header logo, same treatment. The markup already starts it hidden;
+      // this only restates it, so `ctx.revert()` has a value to put back and
+      // the timeline below has an explicit floor to fade up from. Hiding it
+      // *here alone* was the bug: this effect is gated on `mounted`, so it
+      // cannot run until the wordmark has already been painted opaque.
       gsap.set(logo, { opacity: 0 });
       // GSAP owns the headline's centring and the classes deliberately don't:
       // the first transform GSAP writes replaces the whole inline transform, so
@@ -1451,10 +1458,17 @@ export default function HeroNarrative() {
             className="pointer-events-none absolute inset-0 z-[25] bg-gray opacity-0"
           />
 
+          {/* Starts hidden in the markup, exactly like the clip box above and
+            the headline below, and for the same reason. The load timeline is
+            what fades it in; the effect that sets its start state cannot run
+            until after the first paint — one commit to flip `mounted`, another
+            for the effect itself — so a wordmark left visible here is painted
+            at full strength, blanked a frame or two later, then faded back in.
+            Restored explicitly under reduced motion, where nothing fades it. */}
           <header className="absolute top-0 left-0 z-30 w-full px-8 py-8 md:px-16">
             <Logo
               ref={logoRef}
-              className="w-[90px] md:w-[120px]"
+              className="w-[90px] opacity-0 md:w-[120px]"
               color="var(--color-ink)"
             />
           </header>
