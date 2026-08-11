@@ -70,44 +70,107 @@ const LOGO_FADE_AT = DICT_AT + DICT_VH + HOLD_VH;
 const LOGO_FADE_VH = 92;
 
 /**
+ * The tail — the camera onto the footer, and the dots' fall — is the one thing
+ * here that is NOT scrubbed. Crossing TAIL_AT fires a timed timeline that runs
+ * to completion on its own clock, exactly like HeroNarrative's ribbon and its
+ * orange→gray wash, and for exactly the same reason: there is no stopping place
+ * that can leave it half done.
+ *
+ * That is not a preference, it is what the content demands. Everything before
+ * this point holds a *pose* when the scroll stops — a half-risen statement, a
+ * part-open window, a half-faded wordmark all read as compositions. A thrown
+ * ball does not. Frozen between two bounces it stops being a ball with weight
+ * and becomes an orange circle parked in mid-air, and no amount of retiming
+ * fixes that, because a scrubbed animation freezes by definition.
+ *
+ * The camera is inside the same timeline rather than left on the scrub, because
+ * the fall must not begin until the footer has stopped moving (see below). Two
+ * clocks would mean that ordering could be broken by how fast someone happened
+ * to be scrolling; on one clock it holds by construction.
+ *
+ * Relative timings are carried over unchanged — the pan is the same fraction of
+ * the gesture it used to be of the scroll, and so is every fall — so this is the
+ * same animation on a different clock, not a new one.
+ */
+const TAIL_AT = LOGO_FADE_AT + LOGO_FADE_VH;
+
+/**
+ * Pinned scroll the gesture is given. Not a scrub: the animation is over in
+ * TAIL_SECONDS whatever happens here. It is the room that keeps an ordinary
+ * scroll from outrunning it — cross this faster than TAIL_VH/TAIL_SECONDS ≈
+ * 64vh per second and the pin releases while the dots are still in the air,
+ * which is the same trade HeroNarrative's ribbon makes with BAND_HOLD_VH. A
+ * reading pace is nowhere near that. Whatever is left over after the gesture
+ * lands is the beat on the finished footer before the pin lets go.
+ */
+const TAIL_VH = 180;
+
+/**
  * The camera onto the footer.
  *
  * The footer is not animated. It is the second screen of a track inside the
- * pinned stage, and PAN is the camera moving down onto it — measured, so it
- * comes to rest with the footer's bottom edge on the viewport's. That is the
- * whole reason it is built this way: a camera move is indistinguishable from
- * ordinary page scroll, so the footer arrives without a fade, a slide, or any
- * entrance of its own.
+ * pinned stage, and this is the camera moving down onto it — travelling a
+ * *measured* distance, so it comes to rest with the footer's bottom edge on the
+ * viewport's whatever height its own content makes it.
  *
- * It has to be *finished* before the earliest dot touches down, which is what
- * sizes it against DROP_AT below. The dots fall to where the columns come to
- * rest, so a column still creeping upward underneath one is a dot landing on a
- * moving floor. The binding case is a phone, where the stacked footer makes the
- * first two falls short and quick.
+ * It has to be finished before the earliest dot touches down: the dots fall to
+ * where the columns come to rest, so a column still creeping upward underneath
+ * one is a dot landing on a moving floor.
  */
-const PAN_AT = LOGO_FADE_AT + LOGO_FADE_VH;
-const PAN_VH = 62;
+const PAN_SECONDS = 0.9;
 
 /**
- * The fall. DROP_AT is 18vh after the wordmark has gone, so there is a beat with
- * the three dots alone on the screen before anything lets go of them — and it is
- * also the margin that keeps every landing clear of the camera.
+ * The longest fall. Every other dot's flight is a fraction of this, in
+ * proportion to how long its own trajectory takes — which is what puts all three
+ * under one gravity rather than three (see planFall).
  *
- * DROP_VH is the *longest* fall's window, not every fall's: each dot's own
- * window is scaled down from it in proportion to how long its trajectory takes,
- * which is what puts all three under one gravity rather than three (see
- * planFall). DROPS_END is therefore an upper bound — it is exact only on the
- * viewport where the last dot to leave also has the furthest to go.
+ * All three let go at the same instant. They used to be staggered, and that
+ * stagger was the one thing that could put the composition in a state with no
+ * reading: the wordmark gone, one dot falling, the other two hanging in mid-air.
+ * Nothing of the choreography is lost — they still separate on the first frame
+ * and land at different times, because their lift, restitution, drift, drag and
+ * kick all differ and their flights are different lengths. What is lost is the
+ * state where only *some* of them are moving.
  */
-const DROP_AT = PAN_AT + 18;
-const DROP_VH = 170;
-const DROP_STAGGER_VH = 14;
-const DROPS_END = DROP_AT + 2 * DROP_STAGGER_VH + DROP_VH;
+const DROP_SECONDS = 2;
 
-/** A beat on the finished footer before the pin releases. */
-const FOOTER_HOLD_VH = 34;
+/** Slack between the camera stopping and the first touchdown. */
+const DROP_MARGIN_SECONDS = 0.1;
 
-const PIN_VH = DROPS_END + FOOTER_HOLD_VH;
+/**
+ * How much of a fall has gone by the time it first touches down, at its smallest
+ * across every viewport — the room the camera has to fit into.
+ *
+ * Small because a dot spends only about a third of its flight descending and the
+ * rest bouncing. The binding case is a short phone, where the stacked footer can
+ * leave the middle slot almost exactly level with its own dot, so that fall is
+ * over almost immediately while another dot's flight is what sets the length of
+ * the whole thing.
+ *
+ * A floor on the measured value, used only to size TAIL_SECONDS. The real
+ * release is solved per viewport in `measure`; if a layout ever comes in under
+ * this, the dev assertion there fires.
+ */
+const DROP_LEAD_MIN = 0.11;
+
+/**
+ * The gesture's length, derived: the latest a release can be placed, plus the
+ * longest fall that then has to play out from it.
+ */
+const TAIL_SECONDS =
+  PAN_SECONDS + DROP_MARGIN_SECONDS - DROP_LEAD_MIN * DROP_SECONDS +
+  DROP_SECONDS;
+
+/**
+ * Rewinding is quicker than playing, on the same reasoning as HeroNarrative's
+ * wash: scrolling back up, this is racing the wordmark fading in underneath it,
+ * and the dots have to be home before it arrives. Rate is held constant either
+ * way — a reversal from halfway takes half as long — so the gesture always moves
+ * at one speed rather than at whatever speed the interruption implies.
+ */
+const TAIL_BACK_SECONDS = 1.1;
+
+const PIN_VH = TAIL_AT + TAIL_VH;
 const SECTION_VH = PIN_VH + 100;
 
 /**
@@ -238,8 +301,11 @@ type Fall = {
   total: number;
   /** Normalized time of each impact, for the penetration pulse. */
   impacts: number[];
-  /** Scroll this fall is given, in vh — assigned once all three are planned. */
-  window: number;
+  /**
+   * This flight's length as a share of the longest of the three, which is how
+   * one gravity is imposed on all of them — assigned once all three are planned.
+   */
+  share: number;
   /** Net descent, in px. Negative when the slot is above the release point. */
   drop: number;
 };
@@ -289,7 +355,7 @@ function planFall(drop: number, lift: number, restitution: number): Fall {
     at += u;
   }
 
-  return { v0, land, hops, total, impacts, window: 0, drop };
+  return { v0, land, hops, total, impacts, share: 1, drop };
 }
 
 /**
@@ -398,24 +464,34 @@ const FOOTER_COLUMNS = [
  *             thing to go, since the wordmark's cue cannot fire until the
  *             definition has climbed most of the way up.
  *  300–330vh  hold — the wordmark alone, the last beat before the footer.
- *  330–390vh  the wordmark dissolves where it stands. Its three dots are
+ *  330–422vh  the wordmark dissolves where it stands. Its three dots are
  *             separate solid elements standing on the artwork's own, so the
  *             letterforms thin out from under them and the dots are left
- *             hanging in mid-air. There is then an 18vh beat with nothing on
- *             screen but those three dots.
- *  390–452vh  the camera pans down the track onto the footer. It is finished
- *             before the first dot touches down, because a dot cannot be seen
- *             landing on a floor that is still moving.
- *  408–606vh  the dots fall. Not an interpolation with a bounce ease on it: the
- *             vertical is a solved ballistic trajectory — thrown up as it lets
- *             go, accelerating down, three decaying parabolic bounces, then
- *             still — read at a scroll-derived time. Each dot's scroll window is
- *             sized to its own flight time so all three obey one gravity, and
- *             they are given different lift, restitution and sideways drift so
- *             no two paths are the same. Both endpoints are fixed points on
- *             screen with the camera in neither, so the dots hang in the
- *             viewport and fall through it while the page pans behind them.
- *  606–640vh  hold on the finished footer, then the pin releases.
+ *             hanging in mid-air.
+ *      422vh  the tail is cued — and everything past this point comes off the
+ *             scrub. Crossing the mark starts a timed gesture that runs to
+ *             completion whether or not the scrolling continues, and rewinds if
+ *             it is crossed back. See TAIL_AT for why this one stretch cannot be
+ *             scroll-driven: every earlier phase holds a pose when the scroll
+ *             stops, and a thrown ball does not.
+ *      0–0.9s the camera pans down the track onto the footer. The footer has no
+ *             entrance of its own — it is already sitting there in the layout,
+ *             and this is the page arriving at it.
+ *   ~0.7–2.8s the dots fall — all three released together, on a moment solved
+ *             per viewport (see `measure`) so the beat before it is only as long
+ *             as the camera needs. Not an interpolation with a bounce ease on
+ *             it: the vertical is a solved ballistic trajectory — thrown up as
+ *             it lets go, accelerating down, three decaying parabolic bounces,
+ *             then still. Each dot's flight lasts its own share of DROP_SECONDS
+ *             so all three obey one gravity, and they are given different lift,
+ *             restitution and sideways drift so no two paths are the same. Both
+ *             endpoints are fixed points on screen with the camera in neither,
+ *             so the dots hang in the viewport and fall through it while the
+ *             page pans behind them.
+ *  422–602vh  the scroll the gesture is given (TAIL_VH). It is not driving any
+ *             of it — it is the room that stops an ordinary scroll outrunning
+ *             the ~2.8s it takes, and whatever is left once the dots have landed
+ *             is the beat on the finished footer before the pin releases.
  *
  * Pinned with GSAP rather than CSS `sticky`, which does not work under
  * ScrollSmoother's transform-based fake scroll (see the note in HeroNarrative).
@@ -472,6 +548,8 @@ export default function DefinitionSection() {
         markCentreY: 0,
         dictHeight: 0,
         camEnd: 0,
+        /** Seconds into the tail at which the dots let go — solved in `measure`. */
+        releaseAt: PAN_SECONDS + DROP_MARGIN_SECONDS,
         slots: [] as ({ x: number; y: number; size: number } | null)[],
         dots: [] as ({
           fromX: number;
@@ -624,7 +702,45 @@ export default function DefinitionSection() {
           ...m.dots.map((d) => d?.fall.total ?? 0),
         );
         for (const d of m.dots) {
-          if (d) d.fall.window = DROP_VH * (d.fall.total / longest);
+          if (d) d.fall.share = d.fall.total / longest;
+        }
+
+        // And when they may let go: as late as they can, but early enough that
+        // the *soonest* of them to touch down still does so after the camera has
+        // stopped. Since each flight lasts DROP_SECONDS·total/longest, a dot's
+        // lead to its own first landing is DROP_SECONDS·land/longest — exact,
+        // and free, because the falls are already solved.
+        //
+        // Solved here rather than written as a constant because the lead swings
+        // by more than a fixed margin can absorb: it is about a third of a fall
+        // on a desktop and an eighth on a short phone, where the stacked footer
+        // can leave a slot almost level with its own dot. A single hand-set
+        // release has to be conservative enough for the worst of those, which
+        // then leaves the dots hanging that much longer on every other viewport.
+        const lead = Math.min(
+          ...m.dots.map((d) =>
+            d ? (DROP_SECONDS * d.fall.land) / longest : Infinity,
+          ),
+        );
+        m.releaseAt = Math.max(
+          0,
+          PAN_SECONDS +
+          DROP_MARGIN_SECONDS -
+          (Number.isFinite(lead) ? lead : DROP_LEAD_MIN * DROP_SECONDS),
+        );
+
+        if (
+          process.env.NODE_ENV !== "production" &&
+          lead < DROP_LEAD_MIN * DROP_SECONDS
+        ) {
+          console.error(
+            "[DefinitionSection] a dot would land before the camera stops: " +
+            `measured lead ${lead.toFixed(2)}s is under DROP_LEAD_MIN ` +
+            `(${(DROP_LEAD_MIN * DROP_SECONDS).toFixed(2)}s). Lower that ` +
+            "constant — TAIL_SECONDS is derived from it, so the gesture grows " +
+            "as it falls.",
+            { lead, releaseAt: m.releaseAt },
+          );
         }
       };
       measure();
@@ -661,9 +777,14 @@ export default function DefinitionSection() {
       // inline in the trigger because it has to be callable after a re-measure:
       // waiting for the next scroll event would leave the photo visibly out of
       // register in the meantime.
+      // The scroll clock's last reading, kept because `paintDots` is driven from
+      // both clocks and only one of its two callers has this to hand.
+      let vhNow = 0;
+
       function render(progress: number) {
         // Progress as real scroll distance through the pin, in vh.
         const vh = progress * PIN_VH;
+        vhNow = vh;
         const W = document.documentElement.clientWidth;
         const H = window.innerHeight;
         // Exact farthest-corner distance from the circle's true centre rather
@@ -724,10 +845,6 @@ export default function DefinitionSection() {
           y: gsap.utils.interpolate(H, -m.dictHeight, dictP),
         });
 
-        // --- Phase 8: the camera pans onto the footer (390 – 452vh) ---
-        const panP = PAN_EASE(gsap.utils.clamp(0, 1, (vh - PAN_AT) / PAN_VH));
-        gsap.set(track, { y: panP * m.camEnd });
-
         // --- Phase 4: the wordmark slides aside, once the definition is level
         // with it ---
         // Left, and barely up at all: the grid centres the composition on the
@@ -755,7 +872,7 @@ export default function DefinitionSection() {
         const markAt = DICT_AT + levelP * DICT_VH - MARK_LEAD_VH;
         const markP = gsap.utils.clamp(0, 1, (vh - markAt) / MARK_VH);
 
-        // --- Phase 7: the wordmark dissolves (330 – 390vh) ---
+        // --- Phase 7: the wordmark dissolves (330 – 422vh) ---
         // In place, not away: it does not move, shrink or rise, it just stops
         // being there. The three dots are separate elements standing on top of
         // the artwork's own at full opacity, so the letterforms thin out from
@@ -771,16 +888,42 @@ export default function DefinitionSection() {
           opacity: 1 - markFadeP,
         });
 
-        // --- Phase 9: the dots fall (408 – 606vh) ---
+        paintDots();
+
+        // --- Phase 8: the tail is cued, and from here it is on its own clock.
+        // A threshold rather than a span, crossed in either direction, latched
+        // inside runTail — so this is the last thing scroll has any say over.
+        runTail(vh >= TAIL_AT);
+      }
+
+      /**
+       * One frame of the tail, from its own clock in seconds — the camera onto
+       * the footer and the three falls. Everything here is deliberately off the
+       * scrub (see TAIL_AT): a thrown ball frozen between two bounces stops
+       * being a ball, and that is the one state in this section that has no
+       * reading as a still image.
+       *
+       * Nothing about the motion changed in moving it here. The pan is the same
+       * eased travel over the same measured distance; each fall is the same
+       * solved trajectory read at the same relative rate, since a flight's share
+       * of DROP_SECONDS is the same share of the whole it used to have of the
+       * scroll budget.
+       */
+      function renderTail(t: number) {
+        // --- the camera pans onto the footer (0 – 0.9s) ---
+        const panP = PAN_EASE(gsap.utils.clamp(0, 1, t / PAN_SECONDS));
+        gsap.set(track, { y: panP * m.camEnd });
+
+        // --- the dots fall (from m.releaseAt) ---
         //
         // The vertical is not an interpolation. `fallAt` returns a *position
         // under acceleration* — thrown up as it lets go, accelerating down,
         // then a parabola per bounce, each one shorter and lower than the last
-        // (see planFall). Reading the trajectory at a scroll-derived time is
-        // what makes it read as weight instead of as a tween: the dot is
-        // genuinely moving fastest just before each impact and slowest at the
-        // top of each hop, which no easing curve applied to a lerp will do,
-        // because a lerp has one arrival and gravity has four.
+        // (see planFall). Reading the trajectory against a clock is what makes
+        // it read as weight instead of as a tween: the dot is genuinely moving
+        // fastest just before each impact and slowest at the top of each hop,
+        // which no easing curve applied to a lerp will do, because a lerp has
+        // one arrival and gravity has four.
         //
         // Only the sideways travel is eased, and only because horizontal motion
         // has no equivalent story — it is launched and bleeds off.
@@ -792,24 +935,18 @@ export default function DefinitionSection() {
         // the dot crosses between them, which throws it off the bottom of the
         // screen and back. Fixed endpoints mean the dots hang in the viewport
         // and fall through it while the page pans behind them.
-        //
-        // Visibility is a hard toggle at the instant the wordmark begins to
-        // dissolve, and it is invisible because nothing has moved yet: each dot
-        // is standing exactly on the artwork's own. It cannot simply be left on,
-        // because these dots are children of the stage and so paint above the
-        // frame's entire contents — including the definition, which is supposed
-        // to pass *over* the wordmark where the two overlap on a phone.
-        const lit = vh >= LOGO_FADE_AT;
-        const driftScale = Math.min(1, W / 1440);
+        const driftScale = Math.min(1, document.documentElement.clientWidth / 1440);
         for (let i = 0; i < LOGO_DOTS.length; i++) {
           const dot = dotRefs.current[i];
           const d = m.dots[i];
           if (!dot || !d) continue;
 
+          // One release for all three (see DROP_SECONDS), solved in `measure`.
+          // Each flight then runs at its own length — that is the one gravity.
           const p = gsap.utils.clamp(
             0,
             1,
-            (vh - (DROP_AT + i * DROP_STAGGER_VH)) / d.fall.window,
+            (t - m.releaseAt) / (DROP_SECONDS * d.fall.share),
           );
           const ph = DOT_PHYSICS[i];
           // Its own exponent, so the lateral travel is not a shared curve
@@ -818,21 +955,6 @@ export default function DefinitionSection() {
           const glide = 1 - (1 - p) ** ph.drag;
 
           gsap.set(dot, {
-            visibility: lit ? "visible" : "hidden",
-            // Faded up across the back half of the dissolve, reaching full
-            // exactly as the wordmark reaches zero. Snapping it on at full
-            // opacity instead made the second and third dots glitch: the
-            // overlay sits on the artwork's own dot, and any sub-pixel
-            // difference in size between the two reads as the dot jumping
-            // just as the letterforms start to go. Crossing them over hides
-            // the seam — and it is not an entrance, because at every point in
-            // the window the two together still paint one solid dot.
-            opacity: gsap.utils.clamp(
-              0,
-              1,
-              (vh - (LOGO_FADE_AT + LOGO_FADE_VH * 0.2)) /
-                (LOGO_FADE_VH * 0.8),
-            ),
             xPercent: -50,
             yPercent: -50,
             // Bow, then the release kick, then the ring. The bow rides raw
@@ -866,9 +988,92 @@ export default function DefinitionSection() {
           });
         }
 
-        // --- Phase 10: hold (606 – 640vh) — the finished footer, a beat before
-        // the pin releases.
+        // Presence depends on this clock as well as the scroll's, and this one
+        // keeps running after the scrolling stops — so it has to be rewritten
+        // here too, or a dot would hold whatever opacity the last scroll event
+        // left it at while it flew.
+        paintDots();
       }
+
+      /**
+       * The dots' *presence* — visibility and opacity — as opposed to their
+       * movement. It reads from both clocks, and that is the whole point.
+       *
+       * The crossfade belongs to the scrubbed dissolve: each dot is a solid
+       * element standing on the artwork's own, and it fades up across the back
+       * of the wordmark's fade so the two together always paint one solid dot.
+       * Snapping it on at full opacity instead made the second and third glitch
+       * — any sub-pixel difference in size between overlay and artwork reads as
+       * the dot jumping just as the letterforms start to go.
+       *
+       * But that crossfade only means anything while a dot is still *on* the
+       * wordmark. Once it has let go it has to be solid, and putting it on the
+       * scroll clock alone got that wrong in one direction: scrolling back up,
+       * the fade runs home across 74vh of scroll while the flight home takes a
+       * fixed TAIL_BACK_SECONDS, so anything faster than about 67vh per second
+       * faded the dot out from under itself and it arrived invisible. `detached`
+       * holds it opaque for exactly as long as it is away, and hands it back to
+       * the dissolve as it lands — continuously, since the two agree at t = 0.
+       *
+       * Scrolling *down* this changes nothing at all: the dissolve is already
+       * complete at the moment the tail is cued, so both terms are 1 throughout.
+       */
+      function paintDots() {
+        const detached =
+          m.releaseAt > 0
+            ? gsap.utils.clamp(0, 1, tail.t / m.releaseAt)
+            : Number(tail.t > 0);
+        const opacity = gsap.utils.interpolate(
+          gsap.utils.clamp(
+            0,
+            1,
+            (vhNow - (LOGO_FADE_AT + LOGO_FADE_VH * 0.2)) /
+            (LOGO_FADE_VH * 0.8),
+          ),
+          1,
+          detached,
+        );
+        // Hidden before the dissolve begins — these are children of the stage,
+        // so they paint above the frame's entire contents, including the
+        // definition, which has to pass *over* the wordmark where the two
+        // overlap on a phone. `tail.t` keeps them alive through a fast scroll
+        // back up, which can cross that mark while they are still on their way
+        // home.
+        const lit = vhNow >= LOGO_FADE_AT || tail.t > 0;
+        for (const dot of dotRefs.current) {
+          if (!dot) continue;
+          gsap.set(dot, { visibility: lit ? "visible" : "hidden", opacity });
+        }
+      }
+
+      /**
+       * The tail's clock, and the latch that starts it. `t` is seconds into the
+       * gesture; crossing TAIL_AT tweens it to the end, crossing back tweens it
+       * home. Latched on a boolean rather than restarted per scroll event, and
+       * the duration is scaled by how far there is left to go, so an interrupted
+       * run reverses at the same speed it was playing rather than taking a full
+       * TAIL_SECONDS to cover whatever is left.
+       */
+      const tail = { t: 0 };
+      let tailOn = false;
+      let tailTween: gsap.core.Tween | null = null;
+      function runTail(go: boolean) {
+        if (go === tailOn) return;
+        tailOn = go;
+        tailTween?.kill();
+        const to = go ? TAIL_SECONDS : 0;
+        const left = Math.abs(to - tail.t) / TAIL_SECONDS;
+        tailTween = gsap.to(tail, {
+          t: to,
+          duration: (go ? TAIL_SECONDS : TAIL_BACK_SECONDS) * left,
+          // The trajectory carries its own acceleration; easing the clock as
+          // well would be gravity twice.
+          ease: "none",
+          overwrite: "auto",
+          onUpdate: () => renderTail(tail.t),
+        });
+      }
+      renderTail(0);
 
       const trigger = ScrollTrigger.create({
         trigger: section,
@@ -885,6 +1090,10 @@ export default function DefinitionSection() {
         onRefresh: (self) => {
           measure();
           render(self.progress);
+          // The tail's endpoints all came from that measurement, so it has to be
+          // redrawn at wherever its own clock has got to — it is not on the
+          // scrub, so nothing else would ever put it back in register.
+          renderTail(tail.t);
         },
       });
 
@@ -898,6 +1107,7 @@ export default function DefinitionSection() {
         if (cancelled) return;
         measure();
         render(trigger.progress);
+        renderTail(tail.t);
       });
 
       /**
@@ -919,6 +1129,7 @@ export default function DefinitionSection() {
       const sizeObserver = new ResizeObserver(() => {
         measure();
         render(trigger.progress);
+        renderTail(tail.t);
       });
       sizeObserver.observe(circle);
       sizeObserver.observe(frame);
@@ -960,6 +1171,8 @@ export default function DefinitionSection() {
       return () => {
         cancelled = true;
         sizeObserver.disconnect();
+        // Created inside runTail, so the context never collected it.
+        tailTween?.kill();
         trigger.kill();
         veilTrigger.kill();
       };
