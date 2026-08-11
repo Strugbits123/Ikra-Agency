@@ -90,15 +90,45 @@ const DOOR_END = DOOR_AT + DOOR_VH;
  * used to share the door opening and now play out on the settled composition
  * instead, one at a time, with nothing else moving.
  *
- * The beats themselves are unchanged; only what they are measured against is.
- * They were fractions of DOOR_VH (0.15 / 0.04–0.05 / 0.08 of 235vh) and are the
- * same distances here, written in vh directly because there is no longer a
- * window for them to be a fraction of.
+ * The hold is the distance it has always had. The arrival and the exit have both
+ * been widened, repeatedly and only ever widened: the arrival 25 → 35 → 48 → 70 →
+ * 150, the exit 19 → 45 → 90.
+ *
+ * Those last numbers look extravagant against the earlier ones, and the reason
+ * they are not is the lead line sitting right next to them: it grows over 170vh,
+ * and *that* is the pace this sequence was judged smooth at. Everything before
+ * 150 was being measured against nothing — a beat is not fast or slow in the
+ * abstract, it is fast or slow next to the beat before it, and a 70vh arrival
+ * following a 170vh growth is two and a half times quicker than the thing it
+ * replaces. It read as rushed because it was.
+ *
+ * There is a second reason these have to be this long, which is the size of a
+ * scroll gesture. One trackpad swipe covers most of a viewport height; at 70vh a
+ * whole arrival fitted inside a single flick, so it could only ever be seen as
+ * one event rather than as a movement. A beat has to outlast the gesture that
+ * drives it to read as gradual at all.
+ *
+ * Length alone was never enough on its own, though, and it is worth recording
+ * why: with the old `power1` eases (see STACK_IN) a line was three quarters
+ * arrived by the halfway point and travelling flat out at the instant it
+ * vanished, whatever the windows were. Widening them lengthened the slow parts
+ * and left the fast parts exactly as fast. The ease governs how this *feels*, the
+ * window governs how long it lasts, and the end states below govern how much has
+ * to happen in that time — all three matter, and only the third is a change to
+ * how it looks.
+ *
+ * The exit stays shorter than the arrival, and deliberately: a line that is
+ * leaving has the eye's permission to go, and one that is arriving does not.
+ *
+ * Lengthening it moves the whole tail of the sequence back, since COPY_STEP_VH
+ * is built from it and BAND_DRAW_AT is built from where the copy ends. That is
+ * the intended behaviour, not a side effect to be corrected for: the wave should
+ * still wait for the copy to clear.
  */
 const LEAD_HOLD_VH = 12;
-const COPY_IN_VH = 35;
+const COPY_IN_VH = 150;
 const COPY_HOLD_VH = 10;
-const COPY_OUT_VH = 19;
+const COPY_OUT_VH = 90;
 
 /** The lead line's exit, once the doors have stood at rest for a beat. */
 const LEAD_OUT_AT = DOOR_END + LEAD_HOLD_VH;
@@ -138,7 +168,7 @@ const GAP_LINES: GapLine[] = [
     out: [LEAD_OUT_AT, LEAD_OUT_AT + COPY_OUT_VH],
   },
   follower("between who you've become", 0),
-  follower("and how the world sees you", 1),
+  follower("how the world sees you", 1),
 ];
 
 /** The stage is clear again: the last line has finished leaving. */
@@ -248,8 +278,8 @@ const ramp = (p: number, [from, to]: readonly [number, number]) =>
 /**
  * The gap copy shares one seat at the centre of the stage. The two ends of that
  * travel are deliberately not mirror images: a line settles into the seat from
- * just below, barely smaller and barely soft, and leaves by climbing away while
- * shrinking hard and blurring out.
+ * just below, barely smaller and barely soft, and leaves by climbing further
+ * away while shrinking and blurring out.
  *
  * Every line *leaves* that way, the lead line included. It is only the arrival
  * the lead line does differently — it grows into the seat with the doors instead
@@ -257,11 +287,46 @@ const ramp = (p: number, [from, to]: readonly [number, number]) =>
  *
  * `y` is a fraction of the viewport height, not of the element, so every line
  * travels the same distance despite them not being the same height.
+ *
+ * Both eases are `sine.inOut`, and both used to be a `power1` half-curve pointing
+ * the wrong way for how this reads:
+ *
+ *   STACK_IN was `power1.out`, which leaves at *twice* the average rate and then
+ *   creeps. A line was three quarters arrived by the halfway mark, so it lunged
+ *   out of nothing and crawled the rest — and widening the window only made the
+ *   crawl longer, never the lunge gentler.
+ *
+ *   STACK_OUT was `power1.in`, the same fault mirrored: it *ends* at twice the
+ *   average rate, so a line left by accelerating and was travelling flat out at
+ *   the moment it vanished. Worse than the arrival, in fact, because the exit
+ *   covers half again as much distance (0.12 of the viewport against 0.08) and
+ *   three times as much scale, and had a fifth of the scroll to do it in.
+ *
+ * `sine.inOut` starts and ends at zero velocity, so a line eases out of rest,
+ * crosses at a peak of only 1.57× the average, and settles — at both ends of the
+ * seat and in both directions. The deceleration into the seat that `power1.out`
+ * had is kept; what is added is that nothing is ever already at full speed.
+ *
+ * The asymmetry that matters is untouched, because it was never in the eases: it
+ * is in the end states below — a line arrives from just below, barely smaller and
+ * barely soft, and leaves further, smaller and properly blurred.
+ *
+ * Those end states are the third lever on how fast this reads, and the only one
+ * that is a change to how it *looks* rather than to its pace — which is why the
+ * exit's were the last thing touched and not the first. They had to be: an exit
+ * covers more ground than an arrival in every term at once, so at equal rates it
+ * needs proportionally more scroll, and the scale term was the outlier. Collapsing
+ * to 0.45 is nearly three times the arrival's 0.82 → 1, so even after the exit
+ * window was doubled to 90vh it was still changing size about five times faster
+ * than an arriving line — one term running away with the whole gesture. At 0.70,
+ * with the blur eased back to match, every term of the exit lands in a 2.2–2.8×
+ * band against the arrival: uniformly a little quicker, which is what an exit
+ * should be, rather than one thing lurching.
  */
 const STACK_IN_END = { y: 0.08, scale: 0.82, blur: 3 };
-const STACK_OUT_END = { y: -0.12, scale: 0.45, blur: 6 };
-const STACK_IN = gsap.parseEase("power1.out");
-const STACK_OUT = gsap.parseEase("power1.in");
+const STACK_OUT_END = { y: -0.12, scale: 0.7, blur: 4 };
+const STACK_IN = gsap.parseEase("sine.inOut");
+const STACK_OUT = gsap.parseEase("sine.inOut");
 
 /**
  * How much of the lead line's growth is spent fading up. It grows out of a
@@ -765,37 +830,38 @@ const LEAP_COPY = (
  *               resolves out of the orange instead of arriving as a speck, and
  *               it reaches full size on the frame the panels stop.
  *  365–377vh  it holds at full size, doors at rest, nothing else moving.
- *  377–396vh  it climbs away, shrinking and blurring out — an ordinary exit.
- *  387–422vh  "between who you've become" rises into the seat as the lead line
+ *  377–467vh  it climbs away, shrinking and blurring out — an ordinary exit.
+ *  422–572vh  "between who you've become" rises into the seat as the lead line
  *             leaves it; the overlap is what makes an exchange one gesture
- *             rather than a swap.
- *  422–432vh  it holds.
- *  432–451vh  it climbs away.
- *  441–476vh  "how the world sees you" rises in behind it, on the same overlap.
- *  476–486vh  it holds.
- *  486–505vh  it climbs away, clearing the stage.
- *  505–530vh  dead scroll, so the copy is gone before the wave starts and the
+ *             rather than a swap. 150vh of arrival, which is the longest beat
+ *             either of these two lines has and deliberately so (COPY_IN_VH).
+ *  572–582vh  it holds.
+ *  582–672vh  it climbs away.
+ *  627–777vh  "how the world sees you" rises in behind it, on the same overlap.
+ *  777–787vh  it holds.
+ *  787–877vh  it climbs away, clearing the stage.
+ *  877–902vh  dead scroll, so the copy is gone before the wave starts and the
  *             wave is gone before the copy comes back (see BAND_LEAD_VH).
- *  530–590vh  the wavy ribbon draws in right-to-left (a clip, not a fade),
+ *  902–962vh  the wavy ribbon draws in right-to-left (a clip, not a fade),
  *             bridging the two wedges, then closes the same way round. Neither
  *             half is scroll-driven — see BAND_DRAW_AT.
- *  625–657vh  "until you make the leap" fades up into the space the ribbon
+ *  997–1029vh "until you make the leap" fades up into the space the ribbon
  *             vacated, at the same seat and sized to the same span.
- *  657–695vh  it holds.
- *  695–820vh  the doors close, retracing their opening exactly. The line recedes
+ * 1029–1067vh it holds.
+ * 1067–1192vh the doors close, retracing their opening exactly. The line recedes
  *             across the first 91vh of that — scaling to nothing at full opacity,
  *             never fading — and reaches zero exactly as the panels meet
- *             (~786vh), so it goes back through the gap rather than dissolving.
- *     ~786vh  the panels meet: from here the stage is one unbroken orange
+ *             (~1158vh), so it goes back through the gap rather than dissolving.
+ *    ~1158vh  the panels meet: from here the stage is one unbroken orange
  *             surface and the rest of their travel has no visible edges in it.
- *      801vh  the sealed orange washes over to the next section's gray. Cued
+ *     1173vh  the sealed orange washes over to the next section's gray. Cued
  *             here rather than at the doors' stop for that reason — waiting
  *             would shorten the flat-orange stall instead of removing it. Not
  *             scrolled through: crossing the cue fires a timed tween that runs
  *             to completion, like the ribbon, so it is one continuous move at
  *             one speed and no stopping place can leave it half done. The 15vh
  *             of lead is margin for the reverse (see GRAY_LEAD_VH).
- *  836–851vh  a short hold on flat gray before the pin releases. Gray and not
+ * 1208–1223vh a short hold on flat gray before the pin releases. Gray and not
  *             orange is the point: the stage now scrolls away into a section of
  *             its own colour, so there is no seam left to hide.
  *
@@ -1123,7 +1189,7 @@ export default function HeroNarrative() {
           gsap.set(contentRef.current, { opacity: 1 });
 
           // The panels, opening on doorP (130 – 365vh) and closing again at the
-          // end (695 – 820vh). Each slides out while drifting vertically, the
+          // end (1067 – 1192vh). Each slides out while drifting vertically, the
           // drift finishing ahead of the slide (hence `/0.7`).
           //
           // The close is not a second animation: `doorNow` is the opening's own
@@ -1159,14 +1225,14 @@ export default function HeroNarrative() {
             }
           }
 
-          // --- Phase 4: the ribbon draws in, holds, and clears (530 – 590vh) ---
+          // --- Phase 4: the ribbon draws in, holds, and clears (902 – 962vh) ---
           // Not scrubbed: each end of the span fires a tween that runs to
           // completion on its own clock, so the wedges are always at rest before
           // it starts and it can never be left frozen half-drawn. Expressed as a
           // span so it behaves the same crossed either way.
           drawBand(vh >= BAND_DRAW_AT && vh < BAND_CLOSE_AT);
 
-          // --- Phase 5: the closing line takes its place (625 – 786vh) ---
+          // --- Phase 5: the closing line takes its place (997 – 1158vh) ---
           // Seated where the ribbon was, not below it, so the wave resolves into
           // the words. It arrives like the gap copy but recedes instead of fading
           // (see leapSeat), scaling to nothing across the door close so it reads
@@ -1184,9 +1250,9 @@ export default function HeroNarrative() {
             ),
           );
 
-          // --- Phase 6: the doors close (695 – 820vh), driven above ---
+          // --- Phase 6: the doors close (1067 – 1192vh), driven above ---
 
-          // --- Phase 7: orange turns over to gray (fires at 801vh) ---
+          // --- Phase 7: orange turns over to gray (fires at 1173vh) ---
           // Cued just past SEALED_AT rather than off the door close, because the
           // panels seal 34vh before they stop moving and all of that is travel
           // with no visible edges in it — waiting for the doors to finish would
