@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { gsap, ScrollTrigger } from "@/lib/gsap";
 import { useRevealOnView } from "@/lib/useRevealOnView";
+import { HERO_GRAY_TAIL_VH } from "./HeroNarrative";
 import Logo from "./Logo";
 
 function RevealBlock({
@@ -34,6 +35,51 @@ function RevealBlock({
 /** The statement slides up and out of frame, fading as it goes. */
 const STATEMENT_VH = 50;
 
+/**
+ * The statement's *entrance* — the rise and fade it arrives on.
+ *
+ * The move itself is unchanged: 32px of rise and an opacity, out of a CSS
+ * `ease-out`, which is exactly what RevealBlock does everywhere else on the page.
+ * What changed is the clock under it.
+ *
+ * It used to be RevealBlock: an IntersectionObserver waiting for 35% of the
+ * paragraph to be on screen, then a fixed 1s CSS transition. Both halves of that
+ * are wrong for a block that arrives on a hand-off. The threshold cannot be met
+ * until the statement is already climbing the screen, so it is preceded by a
+ * stretch of blank gray with nothing in it; and the transition then runs on
+ * wall-clock time, so the paragraph resolves whether or not the reader is still
+ * scrolling and cannot be scrubbed back. It reads as an event that happened near
+ * the text rather than as the text arriving.
+ *
+ * Now it is scrubbed, and cued off the hero's wash to gray rather than off its
+ * own arrival — HERO_GRAY_TAIL_VH is how much pinned scroll that section has left
+ * when the wash starts, so this begins on the same instant the gray does, which
+ * is as early as it can be placed at all. That start is *behind* the viewport's
+ * bottom edge, and that is the whole of the trick: roughly half the reveal is
+ * spent before this section's top edge appears, so the first line of the
+ * statement is already legible in the first frame it can be seen in, and the rest
+ * of the paragraph resolves under it as the section climbs. Gray arriving and
+ * text arriving become one movement instead of two separated by a wait.
+ *
+ * There is a floor on how much earlier it could ever start, and it is not this
+ * constant: until the hero's pin releases, this whole section is below the fold
+ * and inside a clipped stage, so no amount of lead time can put the statement on
+ * screen. Closing the rest of that gap is the hero's HOLD_VH and GRAY_HOLD_VH,
+ * not anything here.
+ *
+ * It finishes with the section's top edge 55% up the screen rather than at the
+ * pin, so the resolved paragraph gets a settled beat to be read in before Phase 1
+ * starts taking it away. That end mark is also what sets how resolved the first
+ * line is when it clears the bottom edge — the run-up below the fold is only
+ * HERO_GRAY_TAIL_VH long, so the shorter the whole window, the further through it
+ * that run-up carries. At 55 the statement is about half resolved on the frame it
+ * becomes legible, which is the point of the exercise; pushing this toward 0
+ * would stretch the reveal back out and hand the reader a blank first frame
+ * again.
+ */
+const STATEMENT_REVEAL_RISE_PX = 32;
+const STATEMENT_REVEAL_END_PCT = 55;
+
 // The round window opens until it covers the frame, and the photo inside
 // dissolves across the second half of that — derived from the growth rather than
 // stated separately, so "starts at the halfway point" cannot drift.
@@ -42,12 +88,42 @@ const GROW_VH = 100;
 const FADE_AT = GROW_AT + GROW_VH / 2;
 const FADE_VH = GROW_VH / 2;
 
-// The definition's climb up the right-hand side, from below the fold to clear off
-// the top. Long on purpose: a window longer than the distance means it crosses
-// slower than the page scrolls and holds visible in the middle. Shortening it
-// also squeezes the composition, since the wordmark's cue is measured against it.
+/**
+ * The definition's climb up the right-hand side, from below the fold to clear off
+ * the top.
+ *
+ * Longer than the distance it covers, which is the property that matters rather
+ * than the number: the block travels H + its own height, so a *longer* window
+ * means it crosses slower than the page scrolls and holds visible in the middle
+ * instead of being carried off with the layout. That travel is about 147vh on a
+ * 16:9 desktop and about 171vh on a short viewport or a phone, where the block is
+ * taller relative to the screen.
+ *
+ * It came down from 250 because the climb was costing two and a half viewports of
+ * scrolling to move one block out of the way. At 170 the rate is 0.86× page speed
+ * on a 16:9 desktop, 0.82× on a tall one — and about 1.0× on the short cases,
+ * which is the one thing worth knowing before changing it again: there the window
+ * has met the travel, so the block now keeps pace with the layout instead of
+ * lagging it, and the "holds visible in the middle" property is spent. It reads
+ * fine — a block moving with the page still crosses the screen over a viewport of
+ * scrolling — but going below about 150 would put it genuinely *faster* than the
+ * page there, which stops reading as a climb and starts reading as being flung
+ * off. That is the floor.
+ *
+ * Most of what the old length used to buy is recovered elsewhere rather than
+ * given up: the 30vh hold that followed it is gone, and the wordmark's dissolve
+ * now overlaps its last 15% (LOGO_FADE_FRAC), so the stretch from the statement
+ * leaving to the dots letting go is 145vh rather than 280.
+ *
+ * Shortening it squeezes the composition as well, since the wordmark's cue is
+ * measured against this window — see MARK_LEAD_VH. The settled side-by-side beat
+ * runs 25–47vh at this length depending on the viewport, against 60–75 before,
+ * and that is the real cost — it is why this is not shorter still. The narrow end
+ * of that range is a tall desktop, where the definition is short relative to the
+ * screen and so crosses the wordmark soonest.
+ */
 const DICT_AT = STATEMENT_VH;
-const DICT_VH = 250;
+const DICT_VH = 170;
 
 // The wordmark's slide out of the centre and over to the left. It has no cue of
 // its own — the move is a response to the definition arriving alongside it, so
@@ -56,18 +132,60 @@ const DICT_VH = 250;
 const MARK_LEAD_VH = 15;
 const MARK_VH = 50;
 
-/** Hold on the finished composition once the definition has fully cleared. */
-const HOLD_VH = 30;
-
 /**
  * The wordmark dissolves in place — letterforms only. The three dots are
  * separate solid elements sitting exactly on top of the artwork's own, so what
  * the eye sees is the "ikra." melting away and leaving its dots behind, hanging
  * in mid-air. Nothing is masked or cut out; the dots simply outlast the thing
  * they came from.
+ *
+ * This is where the dots begin — the dissolve is what puts them there — so where
+ * it is cued is where the whole footer gesture is cued. It is now a fraction of
+ * the definition's climb rather than a mark after it, which used to be
+ * `DICT_AT + DICT_VH + 30`: the definition had to be entirely gone, and then a
+ * further 30vh of hold had to pass, before anything else would move. Reading it
+ * off the climb instead ties the two together — the letterforms start going as
+ * the definition is on its way out, and the beat between them is a chosen
+ * overlap rather than a leftover gap.
+ *
+ * Below 1, so the dissolve starts while the definition is still on its way out
+ * rather than after it: at 0.85 the block still has its last 15% of climb to make,
+ * which puts it above the frame's top edge with only a band of its own tail still
+ * showing. It was 0.95, and the letterforms now start going about 17vh earlier.
+ *
+ * There is a hard floor under this, and it is a paint-order one rather than a
+ * matter of taste. The dots are children of the stage, so they paint above the
+ * frame's entire contents including the definition, and `lit` turns them on at
+ * exactly this mark — set it while the definition is still crossing the wordmark
+ * and they would show through the text. That crossing finishes between 71% and
+ * 77% of the climb depending on the viewport (latest on a short one, where the
+ * block is tallest relative to the screen), so **0.78 is the floor** and 0.85
+ * leaves about 13vh of margin at the worst viewport.
+ *
+ * There is a second, softer margin behind it: paintDots does not ramp a dot's
+ * opacity up from this mark but from 20% into the dissolve, so for the first
+ * fifth of it the dots are switched on and still fully transparent. Going under
+ * the floor would therefore not show anything immediately — which is exactly why
+ * the floor is written down here rather than left to be discovered.
+ *
+ * LOGO_FADE_VH is the dissolve's own length, and it is what gates the dots
+ * *leaving*: TAIL_AT sits at the end of it, so the fall cannot be cued any earlier
+ * than the letterforms are gone. That ordering is not negotiable — the whole read
+ * is that the dots outlast the thing they came from, and a dot that detaches from
+ * a wordmark still visible underneath it is just a dot sliding off a logo.
+ *
+ * So bringing the fall earlier means making the dissolve quicker, not overlapping
+ * it, and 92 came down to 50 for that reason. It was close to a full viewport of
+ * scrolling to fade one element out — three or four seconds at a reading pace,
+ * most of it spent below 10% opacity where there is nothing left to watch. At 50
+ * it is under two seconds and the fall is cued 42vh sooner. The two ratios
+ * paintDots reads off this (the 20% lead and the 80% span of the dots' own
+ * crossfade) are fractions, so they follow it down and the crossfade stays in
+ * proportion.
  */
-const LOGO_FADE_AT = DICT_AT + DICT_VH + HOLD_VH;
-const LOGO_FADE_VH = 92;
+const LOGO_FADE_FRAC = 0.85;
+const LOGO_FADE_AT = DICT_AT + DICT_VH * LOGO_FADE_FRAC;
+const LOGO_FADE_VH = 30;
 
 /**
  * The tail — the camera onto the footer, and the dots' fall — is the one thing
@@ -176,23 +294,26 @@ const SECTION_VH = PIN_VH + 100;
 /**
  * The cross-fade out of the hero, in vh — see the veil in the markup.
  *
- * HERO_TAIL_VH is the hero's dead tail, between its last phase finishing and its
- * pin releasing. Borrowing it means the dissolve costs no extra scroll. It is the
- * one number here coupled to HeroNarrative — if that tail changes, this must
- * follow, or the fade eats into the hero's last motion. It tracks that section's
- * HOLD_VH, which is where the tail is set.
+ * HERO_GRAY_TAIL_VH is the pinned scroll the hero has left once it begins washing
+ * over to gray. The dissolve runs across exactly that, so it costs no extra
+ * scroll and needs no constant of its own — and it is imported rather than
+ * copied, which it used to be (as the hero's HOLD_VH), because a copy is only
+ * right until one of the two moves.
  *
- * The hero now washes itself over to this section's gray before releasing, so
- * this veil fades gray over gray and has nothing left to dissolve. It is kept
- * anyway, as the cover for the crossing itself: it costs one composited layer,
- * and it is what stops a mismatch showing if either side's timings move again.
+ * Spanning the wash rather than only the dead tail after it is deliberate, and it
+ * is what makes the hero's tail safe to be as short as it now is. The wash is a
+ * timed tween, so a reader crossing those few vh quickly un-pins that section
+ * while it is still part orange; this fade covers the rest of the distance to the
+ * same --color-gray. Two ramps to one colour compose into one monotonic ramp —
+ * there is no frame where the stage moves back toward orange — so what the eye
+ * gets is the gray arriving, possibly a little faster at the end, and never a
+ * hand-over. Without it, that last stretch would be a snap.
  *
  * VEIL_VH adds the 100vh after that, where the hero's released stage scrolls up
  * and this section's top edge scrolls in — the crossing where the two sections
  * would otherwise both be visible.
  */
-const HERO_TAIL_VH = 15;
-const VEIL_VH = HERO_TAIL_VH + 100;
+const VEIL_VH = HERO_GRAY_TAIL_VH + 100;
 
 /**
  * How far the veil overhangs past this section's own top edge, in px. Without it
@@ -230,6 +351,13 @@ const LOGO_DOTS = [
 const FOOTER_DOT_SIZE = "clamp(24px, 2.4vw, 36px)";
 const FOOTER_HEADING_SIZE = "clamp(19px, 1.9vw, 34px)";
 const FOOTER_BODY_SIZE = "clamp(13px, 1.1vw, 19px)";
+
+/**
+ * CSS `ease-out`, which is what RevealBlock used and therefore what this has to
+ * keep: cubic-bezier(0, 0, 0.58, 1) sits within a couple of percent of power1.out
+ * across the whole curve, and on a fade that difference is not visible.
+ */
+const STATEMENT_REVEAL_EASE = gsap.parseEase("power1.out");
 
 /** Soft at both ends, so the camera starts and stops like a scroll would. */
 const PAN_EASE = gsap.parseEase("power1.inOut");
@@ -498,6 +626,13 @@ const FOOTER_REVEAL_EASE = gsap.parseEase("sine.inOut");
  * statement is gone the window and the definition run concurrently, so the phases
  * are listed by what they belong to rather than strictly by start time:
  *
+ *   (before)  the statement is already resolving as this section arrives. Its
+ *             reveal is cued off the hero's wash to gray — the same instant, ~10vh
+ *             before that section's pin releases — so the gray arriving and the
+ *             text arriving are one movement, and the first line is legible on the
+ *             frame it clears the bottom edge rather than after a wait on an empty
+ *             screen. See STATEMENT_REVEAL_RISE_PX. It finishes 55vh before the
+ *             pin, which is the settled beat this next phase then interrupts.
  *     0–50vh  the statement slides up and out of frame, fading as it goes.
  *   20–120vh  the round window opens until it fills the screen. The photo behind
  *             it neither moves nor scales — it is a full-bleed viewport-cover
@@ -514,21 +649,28 @@ const FOOTER_REVEAL_EASE = gsap.parseEase("sine.inOut");
  *             right half for the definition. The only phase with no vh window of
  *             its own: it is cued off the definition's *position*, starting
  *             MARK_LEAD_VH before the definition's top edge reaches the
- *             wordmark's centre line. That lands around 130vh on a 16:9 desktop
- *             and closer to 85vh on a short viewport, which is why it is not a
+ *             wordmark's centre line. That lands around 105vh on a 16:9 desktop
+ *             and closer to 70vh on a short viewport, which is why it is not a
  *             constant.
- *   50–300vh  the definition travels up the right-hand side, from below the fold
- *             to clear off the top. No fade — a pure move, and the window being
- *             far longer than the distance is what keeps it from rushing.
- *             Shorten it and the settled side-by-side composition is the first
- *             thing to go, since the wordmark's cue cannot fire until the
- *             definition has climbed most of the way up.
- *  300–330vh  hold — the wordmark alone, the last beat before the footer.
- *  330–422vh  the wordmark dissolves where it stands. Its three dots are
- *             separate solid elements standing on the artwork's own, so the
- *             letterforms thin out from under them and the dots are left
- *             hanging in mid-air.
- *      422vh  the tail is cued — and everything past this point comes off the
+ *   50–220vh  the definition travels up the right-hand side, from below the fold
+ *             to clear off the top. No fade — a pure move, and the window still
+ *             being longer than the distance is what keeps it from rushing —
+ *             but only by 20% now rather than 70% (DICT_VH). Shortening it costs
+ *             the settled side-by-side composition first, since the wordmark's
+ *             cue cannot fire until the definition has climbed most of the way
+ *             up; 28–51vh of that beat is left, by viewport.
+ *  173–195vh  the wordmark alone — what is left of the hold that used to sit
+ *             here, now a consequence of the two windows rather than a phase.
+ *  195–245vh  the wordmark dissolves where it stands, starting at 85% of the
+ *             climb above so the two overlap (LOGO_FADE_FRAC) rather than queue —
+ *             the letterforms are going while the last of the definition is still
+ *             leaving. Its three dots are separate solid elements standing on the
+ *             artwork's own, so the letterforms thin out from under them and the
+ *             dots are left hanging in mid-air.
+ *      245vh  the tail is cued — the dots let go here, and this is as early as
+ *             that can be: it is the end of the dissolve, because the dots have
+ *             to outlast the wordmark rather than leave while it is still there.
+ *             Everything past this point comes off the
  *             scrub. Crossing the mark starts a timed gesture that runs to
  *             completion whether or not the scrolling continues, and rewinds if
  *             it is crossed back. See TAIL_AT for why this one stretch cannot be
@@ -555,7 +697,7 @@ const FOOTER_REVEAL_EASE = gsap.parseEase("sine.inOut");
  *             endpoints are fixed points on screen with the camera in neither,
  *             so the dots hang in the viewport and fall through it while the
  *             page pans behind them.
- *  422–602vh  the scroll the gesture is given (TAIL_VH). It is not driving any
+ *  245–425vh  the scroll the gesture is given (TAIL_VH). It is not driving any
  *             of it — it is the room that stops an ordinary scroll outrunning
  *             the ~2.8s it takes, and whatever is left once the dots have landed
  *             is the beat on the finished footer before the pin releases.
@@ -569,6 +711,7 @@ export default function DefinitionSection() {
   const trackRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const statementRef = useRef<HTMLDivElement>(null);
+  const statementRevealRef = useRef<HTMLDivElement>(null);
   const circleRef = useRef<HTMLDivElement>(null);
   const photoRef = useRef<HTMLDivElement>(null);
   const veilRef = useRef<HTMLDivElement>(null);
@@ -1250,6 +1393,43 @@ export default function DefinitionSection() {
         onLeaveBack: () => gsap.set(veil, { opacity: 0 }),
       });
 
+      /**
+       * And the statement resolving in across that same hand-off, on the cue the
+       * gray itself is on (see STATEMENT_REVEAL_RISE_PX).
+       *
+       * Its own trigger rather than a phase of `render`, because it has to run
+       * *before* that one exists: `render` is driven by the pin, which does not
+       * start until this section's top edge reaches the viewport top, and the
+       * whole point of this is to have begun long before then. A trigger keyed to
+       * the section's top edge crossing the screen can start below the fold.
+       *
+       * It writes the inner element, while `render` writes the wrapper for the
+       * exit — one element cannot carry both, since either write rebuilds the
+       * whole transform and would drop the other.
+       *
+       * onLeave/onLeaveBack pin the end states for the same reason the veil's do:
+       * onUpdate only fires inside the range, so a jump past either end would
+       * otherwise leave the paragraph at whatever it last held. And it is painted
+       * once on creation, so a restored scroll position lands with it already
+       * correct rather than waiting for the first scroll event.
+       */
+      const paintStatement = (progress: number) => {
+        const p = STATEMENT_REVEAL_EASE(gsap.utils.clamp(0, 1, progress));
+        gsap.set(statementRevealRef.current, {
+          y: (1 - p) * STATEMENT_REVEAL_RISE_PX,
+          opacity: p,
+        });
+      };
+      const statementTrigger = ScrollTrigger.create({
+        trigger: section,
+        start: `top ${100 + HERO_GRAY_TAIL_VH}%`,
+        end: `top ${STATEMENT_REVEAL_END_PCT}%`,
+        onUpdate: (self) => paintStatement(self.progress),
+        onLeave: () => paintStatement(1),
+        onLeaveBack: () => paintStatement(0),
+      });
+      paintStatement(statementTrigger.progress);
+
       return () => {
         cancelled = true;
         sizeObserver.disconnect();
@@ -1257,6 +1437,7 @@ export default function DefinitionSection() {
         tailTween?.kill();
         trigger.kill();
         veilTrigger.kill();
+        statementTrigger.kill();
       };
     }, section);
 
@@ -1333,22 +1514,41 @@ export default function DefinitionSection() {
             ref={frameRef}
             className="relative grid h-screen w-full grid-rows-[1fr_auto_1fr] items-start overflow-hidden px-8 pt-16 pb-10 md:px-16 md:pt-20"
           >
-            {/* GSAP drives `y` on this wrapper while RevealBlock's own entrance
-                transform stays on the element inside it, so the two compose
-                instead of one clobbering the other.
+            {/* GSAP drives `y` on this wrapper for the exit and on the element
+                inside it for the entrance, so the two compose instead of one
+                clobbering the other.
 
                 `items-start` keeps this hugging its text rather than stretching
                 to fill its row, which matters beyond looks: `statementTravel` is
                 measured from this element's bottom edge, and a stretched box
                 would send the statement flying further than it needs to. */}
             <div ref={statementRef} className="row-start-1">
-              <RevealBlock>
+              {/* Hidden from the first paint rather than only from the first
+                  render pass, and inline so it holds before the effect has run;
+                  the scrubbed reveal owns it from there. Left visible under
+                  reduced motion, where no trigger is ever created to turn it on.
+
+                  A `transform` rather than Tailwind's `translate-y-8`: in v4 that
+                  compiles to the separate `translate` property, which GSAP's `y`
+                  does not write, so the two would stack and the paragraph would
+                  start 64px low. */}
+              <div
+                ref={statementRevealRef}
+                style={
+                  reducedMotion
+                    ? undefined
+                    : {
+                      opacity: 0,
+                      transform: `translateY(${STATEMENT_REVEAL_RISE_PX}px)`,
+                    }
+                }
+              >
                 <p className="max-w-4xl text-[26px] leading-[1.3] font-normal text-ink md:text-[35px]">
                   We are rebranding agency for the most discerning ambitions.
                   Our work transforms a simple idea into an experience of true
                   rarity and prestige.
                 </p>
-              </RevealBlock>
+              </div>
             </div>
 
             {/* The middle row: sized to its own content, so the 1fr rows either

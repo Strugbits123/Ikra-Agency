@@ -395,24 +395,95 @@ const SEALED_AT = LEAP_OUT_AT + LEAP_OUT_VH;
  */
 const GRAY_LEAD_VH = 15;
 const GRAY_AT = SEALED_AT + GRAY_LEAD_VH;
-/** Scroll the wash is given to play out in, before the pin's own hold begins. */
-const GRAY_HOLD_VH = 35;
+/**
+ * Scroll the wash is given to play out in, before the pin's own hold begins.
+ *
+ * A guard against a fast scroll outrunning a timed tween, and nothing more — it
+ * is not the wash's length, which is GRAY_SECONDS whatever is written here. So
+ * every vh of it the wash does not use is a vh of blank gray screen, and that is
+ * why it has come down from 35 to 6: past the wash there is nothing left on this
+ * stage but flat gray, and the next section's statement cannot begin to come up
+ * until this pin has released and its own top edge has appeared. Together with
+ * HOLD_VH this is now the *whole* of the gap between the two, and it is meant to
+ * be crossed rather than dwelt in.
+ *
+ * A wash that outruns it is not cut off — it is a tween on its own clock, so it
+ * goes on running after the pin lets go and always plays in full. It simply
+ * finishes off screen, underneath DefinitionSection's veil, which is opaque by
+ * then and is the same --color-gray the wash is heading for; and that veil now
+ * fades in across this same stretch, so the two ramp to gray together rather than
+ * one handing over to the other. Nothing about the transition is lost by being
+ * short of room here — only the flat gray that used to follow it.
+ *
+ * The pass back up is unaffected: the far shorter GRAY_HIDE_SECONDS is what has
+ * to fit there, and GRAY_LEAD_VH is what gives it the room.
+ */
+const GRAY_HOLD_VH = 6;
 const GRAY_SECONDS = 1.3;
 const GRAY_HIDE_SECONDS = 0.55;
 
-/** Pinned screen past the last phase, where nothing scroll-driven moves. */
-const HOLD_VH = 15;
+/**
+ * Pinned screen past the last phase, where nothing scroll-driven moves.
+ *
+ * Short, and no longer meant as a beat of rest: it is flat gray with the doors
+ * shut and the stage empty, which reads as the page having stopped rather than as
+ * a pause. Four is a margin, not a hold — enough that the release cannot land on
+ * the exact frame the wash is cued on, and no more.
+ */
+const HOLD_VH = 4;
 
-// The pin plus the viewport the pinned stage occupies: the pin runs `top top` →
-// `bottom bottom`, so progress 0→1 covers `height − 100vh`.
-//
-// Taken from whichever of the two closing phases finishes last, so the hold is
-// always a hold: picking the door close alone would end the pin while the wash
-// was still playing, which for a tween on its own clock means it would be cut
-// off rather than merely hurried.
-const PIN_VH =
-  Math.max(DOOR_CLOSE_AT + DOOR_CLOSE_VH, GRAY_AT + GRAY_HOLD_VH) + HOLD_VH;
+/**
+ * The pin plus the viewport the pinned stage occupies: the pin runs `top top` →
+ * `bottom bottom`, so progress 0→1 covers `height − 100vh`.
+ *
+ * Measured from the wash and *not* from the door close, which is the one change
+ * here that needs justifying, because it ends the pin with the panels only ~92%
+ * of the way shut.
+ *
+ * They are shut. The panels are DOOR_PANEL_W wide each, so they cover the screen
+ * at DOOR_SEALED_AT and everything past that is travel underneath a surface with
+ * no edges left in it — the same fact GRAY_AT is placed on. Closing retraces the
+ * opening, so the seal comes at 1 − DOOR_SEALED_AT of the close, about 72%: from
+ * there to the end, ~19vh, every frame is the identical flat orange rectangle.
+ *
+ * That stretch was the actual wall in front of the hand-off. It is invisible here
+ * and it was holding the pin open, so the next section stayed a screen and a half
+ * below the fold with its statement in it, and no amount of retiming *there*
+ * could reach past it. Dropping it is not a shortening of the door animation —
+ * the doors move at exactly the speed they did, over exactly the scroll they did,
+ * and every visible frame of the close is untouched. The travel simply stops
+ * being waited on once it stops being visible.
+ *
+ * Which is asserted rather than assumed: the close must be past the seal by the
+ * release, or the pin would end on a stage with a gap still open in it.
+ */
+const PIN_VH = GRAY_AT + GRAY_HOLD_VH + HOLD_VH;
 const SECTION_VH = PIN_VH + 100;
+
+if (process.env.NODE_ENV !== "production") {
+  const closeP = (PIN_VH - DOOR_CLOSE_AT) / DOOR_CLOSE_VH;
+  if (closeP < 1 - DOOR_SEALED_AT) {
+    console.error(
+      "[HeroNarrative] the pin releases before the panels have sealed: close is " +
+      `${(100 * closeP).toFixed(1)}% at PIN_VH, and the seal is at ` +
+      `${(100 * (1 - DOOR_SEALED_AT)).toFixed(1)}%. Lengthen GRAY_HOLD_VH or ` +
+      "HOLD_VH, or shorten DOOR_CLOSE_VH.",
+    );
+  }
+}
+
+/**
+ * The hand-off, published for DefinitionSection — one number, which is how much
+ * pinned scroll is left at the moment this stage begins turning gray.
+ *
+ * That section places both of its hand-off cues against it: its veil's dissolve
+ * and its statement's reveal both run across exactly this stretch, so the wash,
+ * the dissolve and the text arriving all start on the same instant by
+ * construction rather than by three constants being kept in step. It used to
+ * carry a copy of HOLD_VH for the veil instead, which was only correct until one
+ * of the two moved — and both have now moved twice.
+ */
+export const HERO_GRAY_TAIL_VH = PIN_VH - GRAY_AT;
 
 /** 0 before the span, 1 after it, linear in between. */
 const ramp = (p: number, [from, to]: readonly [number, number]) =>
@@ -1027,16 +1098,25 @@ const LEAP_COPY = (
  *              itself back rather than a beat of its own. The line recedes across
  *              the first 91vh of that, scaling to nothing at full opacity and
  *              never fading, reaching zero exactly as the panels meet (~559vh), so
- *              it goes back through the gap rather than dissolving.
+ *              it goes back through the gap rather than dissolving. The pin now
+ *              releases at 583.5, ~92% of the way through it — see PIN_VH. Every
+ *              frame from ~559 on is the same flat orange rectangle, so nothing
+ *              of this is lost; the section simply stops waiting on it.
  *     ~559vh   the panels meet: from here the stage is one unbroken orange
  *              surface and the rest of their travel has no visible edges in it.
  *      574vh   (cue) the sealed orange washes over to the next section's gray.
  *              Cued here rather than at the doors' stop because waiting would
  *              shorten the flat-orange stall instead of removing it. The 15vh of
  *              lead is margin for the reverse (see GRAY_LEAD_VH).
- *  609–624vh   a short hold on flat gray before the pin releases. Gray and not
- *              orange is the point: the stage now scrolls away into a section of
- *              its own colour, so there is no seam left to hide.
+ *  574–584vh   the last 10vh of the pin, and the whole of the hand-off. The wash
+ *              is playing, DefinitionSection's veil is fading in over it to the
+ *              same gray, and its statement is resolving below the fold — all
+ *              three cued off this one instant (see HERO_GRAY_TAIL_VH). The pin
+ *              then releases and that section's top edge, statement first, comes
+ *              up from the bottom of the screen while the gray is still arriving.
+ *              There is no flat-gray hold left between the two: it was ~50vh of
+ *              this section's tail, and holding onto it is what made the reader
+ *              wait on an empty screen for the text.
  *
  * Then DefinitionSection takes over. Its own gradient strip still covers this
  * seam and is left in place, but it now has nothing to do: it fades gray over
