@@ -406,8 +406,24 @@ const LEAP_HOLD_VH = 38;
  * watched to the end is worse than a screen of gray at the end of it.
  */
 export const DOOR_CLOSE_AT = LEAP_AT + LEAP_IN_VH + LEAP_HOLD_VH;
-export const CLOSE_SECONDS = 1.1;
-export const DOOR_CLOSE_VH = 30;
+export const CLOSE_SECONDS = 0.95;
+/**
+ * Sized against the *visible* part of the close, and nothing more.
+ *
+ * The panels cover the screen at CLOSE_SEALED_P — 72% in, about 0.68s — and every
+ * frame after that is the same flat orange rectangle, so the guard only has to hold
+ * the pin that far. 17vh is roughly that long at a steady scroll. The invisible
+ * remainder finishes after the pin lets go, and it is not exposed by that: the next
+ * section's veil is fully opaque on the frame the boundary crossing begins, so even a
+ * flick that unpins mid-close has the stage covered before any of it could be seen.
+ *
+ * It has come down 30 → 22 → 17, and CLOSE_SECONDS 1.1 → 0.95 with it, because every
+ * vh between the panels sealing and the pin releasing is blank gray with the next
+ * section still behind a fixed stage. The two have to move together: shorten the
+ * guard without the close and an ordinary scroll unpins while the doors are still
+ * visibly travelling.
+ */
+export const DOOR_CLOSE_VH = 17;
 
 /**
  * How far through the close the panels meet and the stage reads as one unbroken
@@ -448,9 +464,19 @@ export const GRAY_HIDE_SECONDS = 0.55;
  * Deliberately shorter than the wash it covers: the wash is on its own clock and
  * finishes off screen under DefinitionSection's veil, which is the same colour, so
  * holding the pin out to meet it buys nothing and costs the reader a blank screen.
- * 10 is enough that the release cannot land on the frame the wash is cued on.
+ *
+ * 5, and it is the veil's whole dissolve window as well as this hold — the two are the
+ * same stretch (see HERO_GRAY_TAIL_VH). That is short for a cross-fade and does not
+ * matter here, because by this point the hero has already washed to `--color-gray` on
+ * its own and the veil is gray fading in over gray. Its only real job is to be fully
+ * opaque before the boundary crossing, which it reaches whatever the window.
+ *
+ * Every vh here is a vh of pinned gray with the next section still below the fold, so
+ * this is as low as it goes: below 4 the release starts landing on the same frame the
+ * wash is cued on, and the veil loses the window it needs to commit before the
+ * crossing.
  */
-const GRAY_TAIL_VH = 10;
+const GRAY_TAIL_VH = 4;
 
 /**
  * The pin plus the viewport the pinned stage occupies: the pin runs `top top` →

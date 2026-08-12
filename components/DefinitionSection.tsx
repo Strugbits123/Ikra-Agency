@@ -59,23 +59,34 @@ const STATEMENT_VH = 50;
  *
  * So it is a *cue* now, matching the hero it arrives out of: everything the hero
  * does on this hand-off is one timed move at one speed (its doors, its wash), and
- * the text is the third of them. Crossing STATEMENT_REVEAL_AT_PCT — the section's
- * own top edge just clearing the bottom of the screen, which is the first frame the
- * paragraph could be seen in at all — fires STATEMENT_REVEAL_SECONDS of rise and
- * fade that runs to completion whether or not the reader keeps scrolling. Gray
- * arriving and text arriving are one movement, and there is no gray screen with
- * nothing on it to sit in.
+ * the text is the third of them. Crossing STATEMENT_REVEAL_AT_PCT fires
+ * STATEMENT_REVEAL_SECONDS of rise and fade that runs to completion whether or not
+ * the reader keeps scrolling.
  *
- * 98 rather than 100 so the move starts a hair before the edge is strictly on
- * screen, absorbing the frame or two ScrollTrigger takes to notice; the reveal is
- * over well before the section has climbed far enough for Phase 1 to start taking
- * the statement away.
+ * That mark sits *behind* the viewport's bottom edge, halfway through the hero's gray
+ * tail, and being behind it is the whole point. It used to be 98 — the section's top
+ * edge just clearing the bottom, the first frame the paragraph could be seen in —
+ * which put it strictly *after* the veil had finished dissolving the hero's wordmark
+ * out. Three things that belong to one hand-off then needed three separate scrolls:
+ * gray arrives, scroll, logo fades, scroll, text begins.
+ *
+ * It is the tail's *full* length now — the earliest this can be placed at all, since
+ * before it the hero is still pinned and this section is not merely below the fold but
+ * behind a fixed, opaque stage. So the veil's fade and this reveal start on the same
+ * frame, and the paragraph is most of the way up by the time its first line clears the
+ * bottom edge: whatever of the section can be seen has text in it.
+ *
+ * Which is the honest limit of what timing can do here. The stretch of bare gray that
+ * is left is not this cue waiting — it is the section physically rising into view, and
+ * no cue can put a paragraph on screen while a fixed full-viewport stage is over it.
+ * Removing it means overlapping this section up into the hero's tail and sliding the
+ * pinned stage with it, which re-bases every offset measured in this file.
  *
  * The move itself is unchanged from the RevealBlock it began as: 32px of rise and an
  * opacity out of an `ease-out`. Only its clock has changed, twice.
  */
 const STATEMENT_REVEAL_RISE_PX = 32;
-const STATEMENT_REVEAL_AT_PCT = 98;
+const STATEMENT_REVEAL_AT_PCT = 100 + HERO_GRAY_TAIL_VH;
 const STATEMENT_REVEAL_SECONDS = 0.9;
 
 // The round window opens until it covers the frame, and the photo inside
@@ -339,14 +350,42 @@ const LOGO_DOTS = [
 ] as const;
 
 /**
+ * The wordmark's rendered width, and the one place it is written.
+ *
+ * Shared because the footer's dots are derived from it (below): the dot that lands
+ * in the footer is the same dot that left the wordmark, so its size cannot be an
+ * independent choice at the other end.
+ */
+const MARK_WIDTH = "max(240px, min(29vw, 53vh, 520px))";
+
+/**
+ * The footer dot, and therefore the size each falling dot settles at — which is
+ * exactly the size it had on the wordmark, by construction.
+ *
+ * It was an independent `clamp(24px, 2.4vw, 36px)`, and the dots shrank across their
+ * flight to reach it: the launch scale is `logo diameter / slot size` easing to 1, so
+ * a slot smaller than the wordmark's dot *is* a shrink. At 1920 that was 49px → 36px,
+ * a quarter of the dot lost on the way down, which reads as the dots receding rather
+ * than falling.
+ *
+ * Derived from MARK_WIDTH and the artwork's own dot diameter instead, so the two ends
+ * agree at every viewport and the flight is a pure translation. `min`/`max` distribute
+ * over a positive scalar, so this is the wordmark's dot diameter exactly, not an
+ * approximation of it — and `scale0` therefore lands on 1 without being special-cased.
+ *
+ * The knock-on is that the footer's columns grow a little on a wide screen, since the
+ * pad above each heading is bigger. Nothing needs adjusting for it: `camEnd` is
+ * measured from the footer's real height, so the camera's travel follows.
+ */
+const FOOTER_DOT_SIZE = `calc(${MARK_WIDTH} * ${LOGO_DOTS[0].d})`;
+
+/**
  * The footer's type, sized against the viewport rather than fixed.
  *
  * It is the one block on the page with nothing above it, so on a large screen a
  * px-sized version reads as a small notice stranded at the bottom. Scaling with
- * vw keeps it the same *share* of the screen everywhere. FOOTER_DOT_SIZE is also
- * the size each falling dot settles at.
+ * vw keeps it the same *share* of the screen everywhere.
  */
-const FOOTER_DOT_SIZE = "clamp(24px, 2.4vw, 36px)";
 const FOOTER_HEADING_SIZE = "clamp(19px, 1.9vw, 34px)";
 const FOOTER_BODY_SIZE = "clamp(13px, 1.1vw, 19px)";
 
@@ -860,9 +899,10 @@ export default function DefinitionSection() {
           m.camEnd = 0;
         }
 
-        // Where each dot is going. Sized from the slot too, so the falling dot
-        // settles at exactly the footer's own dot size whatever the viewport
-        // resolves that clamp() to.
+        // Where each dot is going. The dot element takes the slot's size, and the
+        // slot is itself derived from the wordmark's dot (see FOOTER_DOT_SIZE), so
+        // this is the size the dot had on the wordmark — the flight neither grows nor
+        // shrinks it, whatever the viewport resolves those terms to.
         m.slots = LOGO_DOTS.map((_, i) => {
           const slot = slotRefs.current[i];
           if (!slot) return null;
@@ -892,6 +932,11 @@ export default function DefinitionSection() {
             fromX: restX + d.cx * m.markW,
             fromY,
             toX: slot.x,
+            // 1 by construction now that the slot is sized from this same product
+            // (see FOOTER_DOT_SIZE), so the glide below is a no-op on scale. Kept as
+            // a ratio rather than dropped: it is the thing that guarantees the dot
+            // leaves at the wordmark's size, and a rounded slot measurement or a
+            // future change at either end should be absorbed here, not seen.
             scale0: (d.d * m.markW) / slot.size,
             fall: planFall(
               slot.y + m.camEnd - fromY,
@@ -1533,7 +1578,12 @@ export default function DefinitionSection() {
               top, which is exactly where the footer begins. */}
           <div
             ref={frameRef}
-            className="relative grid h-screen w-full grid-rows-[1fr_auto_1fr] items-start overflow-hidden px-8 pt-16 pb-10 md:px-16 md:pt-20"
+            /* `pt` is deliberately tight: the statement sits at the top of row 1, so
+               this padding is scroll the reader spends on blank gray before the first
+               line clears the bottom edge as the section rises. 80px was ~9vh of it on
+               a laptop. The composition does not miss it — the circle is centred by the
+               two 1fr rows, not by this. */
+            className="relative grid h-screen w-full grid-rows-[1fr_auto_1fr] items-start overflow-hidden px-14 pt-10 pb-10 md:px-36 md:pt-12"
           >
             {/* GSAP drives `y` on this wrapper for the exit and on the element
                 inside it for the entrance, so the two compose instead of one
@@ -1647,7 +1697,7 @@ export default function DefinitionSection() {
               <div
                 ref={markRef}
                 className="relative col-start-1 row-start-1"
-                style={{ width: "max(240px, min(29vw, 53vh, 520px))" }}
+                style={{ width: MARK_WIDTH }}
               >
                 <Logo className="w-full" color="var(--color-accent)" />
               </div>
@@ -1663,7 +1713,7 @@ export default function DefinitionSection() {
             {!reducedMotion && (
               <div
                 ref={dictionaryRef}
-                className="pointer-events-none absolute inset-x-8 top-0 md:inset-x-auto md:right-16 md:w-[42%] md:max-w-140"
+                className="pointer-events-none absolute inset-x-14 top-0 md:inset-x-auto md:right-36 md:w-[42%] md:max-w-140"
               >
                 {DICTIONARY_CONTENT}
               </div>
@@ -1674,7 +1724,7 @@ export default function DefinitionSection() {
               follows the composition in normal flow, above the footer. There must
               only ever be one of these, since both carry `dictionaryRef`. */}
           {reducedMotion && (
-            <div className="px-8 pb-24 md:px-16">
+            <div className="px-14 pb-24 md:px-36">
               <RevealBlock className="max-w-md">
                 {DICTIONARY_CONTENT}
               </RevealBlock>
@@ -1704,7 +1754,15 @@ export default function DefinitionSection() {
               padding — and not at all by the padding above. That is why the
               bar earns its place: it fills the bottom of the screen, which is
               the only direction this composition can grow without flattening
-              the fall. */}
+              the fall.
+
+              Left on the site's own px-8/md:px-16 gutter while the frame above sits
+              wider, and the two are deliberately not one rhythm: the frame's padding
+              is what the wordmark comes to rest against and what the definition is
+              inset by, so widening it was about giving those two air. This is a
+              three-column grid that wants the width. Nothing animated reads either
+              value — `padLeft` is measured off the frame, and the dots' slots off
+              their own elements on every refresh — so they can differ freely. */}
           <div
             ref={footerRef}
             className={`w-full px-8 md:px-16 ${reducedMotion ? "py-24" : "py-8 md:pt-[24vh] md:pb-8"}`}
