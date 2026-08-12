@@ -51,28 +51,29 @@ import { DOOR_SEALED_AT } from "./doors";
  *  102–132vh   it climbs away.
  *  117–162vh   "how the world sees you" rises in behind it, on the same overlap.
  *  162–170vh   it holds.
- *  170–200vh   it climbs away, clearing the stage.
- *  200–225vh   dead scroll, so the copy is gone before the wave starts and the
- *              wave is gone before the copy comes back (see BAND_LEAD_VH).
- *  225–285vh   (cue, both ends) the wavy ribbon draws in right-to-left (a clip,
+ *  170–200vh   it climbs away, clearing the stage — and from 0.7 of the way through
+ *              that exit the wave is already coming in under it (BAND_DRAW_AT).
+ *  191–251vh   (cue, both ends) the wavy ribbon draws in right-to-left (a clip,
  *              not a fade), bridging the two wedges, then closes the same way
  *              round — see BAND_DRAW_AT.
- *  320–352vh   "until you make the leap" fades up into the space the ribbon
- *              vacated, at the same seat and sized to the same span.
- *  352–390vh   it holds.
- *     390vh    (cue) the doors close over 1.1s, retracing their opening exactly, and
+ *  251–283vh   "until you make the leap" fades up into the space the ribbon is
+ *              vacating, at the same seat and sized to the same span — beginning on
+ *              the very instant the wave starts to close, so the wedges are never
+ *              bare between them (see LEAP_AT).
+ *  283–321vh   it holds.
+ *     321vh    (cue) the doors close over 1.1s, retracing their opening exactly, and
  *              the third scroll is the whole of it. The line recedes on the same
  *              progress, scaling to nothing at full opacity and never fading,
  *              reaching zero exactly as the panels meet — 72% of the way through the
  *              close, since closing retraces the opening (see CLOSE_SEALED_P). The
  *              remaining 28% is the identical flat orange rectangle every frame.
- *  390–420vh   pinned scroll held over that close so an ordinary gesture cannot
+ *  321–351vh   pinned scroll held over that close so an ordinary gesture cannot
  *              unpin the stage while the panels are still moving (DOOR_CLOSE_VH).
  *              Not the close's length — it plays at its own speed inside this.
  *              (cue) the moment the panels meet, the sealed orange washes over to
  *              the next section's gray, off the close's progress rather than a mark
  *              of its own so nothing can open a flat-orange stall between the two.
- *  420–430vh   the last 10vh of the pin, and all that is left of it. The wash
+ *  351–361vh   the last 10vh of the pin, and all that is left of it. The wash
  *              is playing, DefinitionSection's veil is fading in over it to the
  *              same gray, and its statement is resolving below the fold — all
  *              three cued off this one instant (see HERO_GRAY_TAIL_VH). The pin
@@ -278,32 +279,100 @@ export const GAP_LINES: GapLine[] = [
   follower("how the world sees you", 1),
 ];
 
+const LAST_LINE = GAP_LINES[GAP_LINES.length - 1];
+
 /** The stage is clear again: the last line has finished leaving. */
-export const COPY_END = GAP_LINES[GAP_LINES.length - 1].out[1];
+export const COPY_END = LAST_LINE.out[1];
 
 /**
  * The ribbon's draw-in is NOT scrubbed: crossing either end of the span fires a
  * timed tween that runs to completion, so stopping mid-scroll can never leave half
  * a wave on screen.
  *
- * BAND_LEAD_VH is dead scroll between the last line of copy clearing and the wave
- * starting, and it is what keeps the two off each other's screen — a fast scroll
- * can cross a cue while a tween is still playing, and scrolling *up* the close is
- * racing the last gap line back on. It must stay at least as long as
- * BAND_HIDE_SECONDS takes to scroll through.
+ * It is cued on the last line being *halfway out*, not on the stage being clear.
+ * The two used to be separated by the line's whole 30vh exit plus 25vh of dead
+ * scroll on top, held apart so a fast scroll could not cross this cue while the copy
+ * was still playing — but what that bought in safety it spent on 55vh of empty
+ * orange between the copy going and the wave arriving, which is the longest nothing
+ * happens anywhere in the section. Overlapping them makes one gesture of it: the
+ * line climbs away and the wave draws in underneath it, and because the draw is a
+ * 0.9s cue against a 30vh scrub the wave is complete about where the line finishes
+ * clearing.
+ *
+ * BAND_OVERLAP is how far into that exit, and it is 0.7 rather than the 0.5 the copy
+ * hands over to *itself* on, because the exit's ease is not linear and the eye reads
+ * position rather than progress. STACK_OUT is `sine.inOut`, so at the halfway mark
+ * the line has travelled only ~37% of its rise and is still 62% opaque — sitting, to
+ * look at, exactly where it was, in the centre the ribbon spans. That is the
+ * collision. At 0.7 it has climbed ~9.5% of the viewport and dropped to ~20%, small
+ * and faint and plainly on its way out, while still visibly moving — which is the
+ * beat asked for: the wave starts *as the line leaves*, not as it sits.
+ *
+ * Measured against the copy's own clock and not raw scroll — see `copyVh` in
+ * ./sequence. The two are the same only when the doors happen to stop at their
+ * nominal mark; every other pass squeezes the copy into a shorter run of scroll, and
+ * a band cued in raw vh slid earlier against the line by however much. That is why
+ * this looked like a different beat on different scrolls.
+ *
+ * The cost is the case that separation was for — scrolling back *up*, the ribbon's
+ * 0.5s close now runs against the last line returning rather than after it. They are
+ * at opposite ends of the stage and the close is the quicker of the two, so they
+ * read as one reversal rather than a collision.
  */
-const BAND_LEAD_VH = 25;
-export const BAND_DRAW_AT = COPY_END + BAND_LEAD_VH;
+const BAND_OVERLAP = 0.7;
+export const BAND_DRAW_AT = LAST_LINE.out[0] + COPY_OUT_VH * BAND_OVERLAP;
+
+/**
+ * Where the ribbon *un*-draws on the way back up — a different mark from the one it
+ * draws on coming down, and it has to be.
+ *
+ * A single threshold cannot serve both passes here, because the overlap it buys going
+ * down is an overlap the wrong way round going up. Coming down, the line is *leaving*
+ * at BAND_DRAW_AT: 21% opaque and still fading, so the wave draws in behind something
+ * on its way out. Reversing across that same mark, the line is *arriving* — it starts
+ * at 21% and climbs from there while the wave's 0.5s close is still running, so it
+ * gains most of its opacity on top of a ribbon that has not gone yet.
+ *
+ * So the return is cued off the copy being clear instead, plus a lead: BAND_UP_LEAD_VH
+ * is about half a second of upward scroll, which is the whole of BAND_HIDE_SECONDS.
+ * The wave is therefore closing across a stretch where the last line is still fully
+ * gone, and has finished by the frame that line begins to come back.
+ *
+ * Selected by the direction of travel, not by whether the ribbon is currently shown
+ * (see the `scrollDir` ternary in paintStage). A release mark above a commit mark is
+ * the inverse of hysteresis and oscillates if it is latched on state; direction is the
+ * one input that is stable while the scroll is stopped. Going down, `copyVh` passes
+ * BAND_DRAW_AT and this never comes into it, so the downward beat is untouched.
+ */
+const BAND_UP_LEAD_VH = 12;
+export const BAND_UNDRAW_AT = LAST_LINE.out[1] + BAND_UP_LEAD_VH;
 const BAND_HOLD_VH = 60;
 export const BAND_CLOSE_AT = BAND_DRAW_AT + BAND_HOLD_VH;
 export const BAND_DRAW_SECONDS = 0.9;
 export const BAND_HIDE_SECONDS = 0.5;
 
-// The closing line takes the space the ribbon just vacated. The 35vh gap past the
-// ribbon's cue guarantees the wave has gone before the line arrives, since the
-// close is a timed tween and the cue can be crossed at speed. Sized against
-// BAND_HIDE_SECONDS, so it grows if the close is slowed further.
-export const LEAP_AT = BAND_CLOSE_AT + 35;
+/**
+ * The closing line takes the space the ribbon just vacated — and starts taking it on
+ * the same instant the ribbon starts leaving it, which is why there is no gap between
+ * the two marks at all.
+ *
+ * It had 35vh of lead, on the reasoning that the close is a timed tween and the cue
+ * can be crossed at speed, so the wave had to be guaranteed gone first. That
+ * guarantee is real but it does not need distance to hold, and buying it with
+ * distance left a stretch of bare orange wedges with nothing between them: the wave
+ * gone, the line not yet begun.
+ *
+ * The two clocks do the work instead, and they lean the right way. The close is 0.5s
+ * on its own clock; the arrival is 32vh of scroll through `sine.inOut`, which is at
+ * its slowest exactly at the start. So half a second in — about the whole of the
+ * close, at any ordinary rate — the line is only ~15% up, and it does not reach even
+ * a quarter until the wave has certainly gone. Something is always in that seat, and
+ * never two things at once.
+ *
+ * The pass back up is the case this shape gives away, the same one BAND_OVERLAP does:
+ * the ribbon's 0.9s draw now runs against the line receding rather than after it.
+ */
+export const LEAP_AT = BAND_CLOSE_AT;
 export const LEAP_IN_VH = 32;
 const LEAP_HOLD_VH = 38;
 

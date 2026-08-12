@@ -10,6 +10,7 @@ import {
   BAND_DRAW_AT,
   BAND_DRAW_SECONDS,
   BAND_HIDE_SECONDS,
+  BAND_UNDRAW_AT,
   CLOSE_SEALED_P,
   CLOSE_SECONDS,
   COPY_END,
@@ -109,7 +110,7 @@ export function createHeroSequence(
       });
     }
 
-    // The orange→gray turn-over, latched the same way (see GRAY_AT).
+    // The orange→gray turn-over, latched the same way (see CLOSE_SEALED_P).
     //
     // Simpler than the ribbon in one respect: the hidden state *is* opacity 0, so
     // there is no parked-at-the-wrong-end problem to undo first and no `midFlight`
@@ -118,7 +119,7 @@ export function createHeroSequence(
     // `sine.inOut` both ways: this is a full-screen change of colour, so it has to
     // leave and arrive at zero velocity or the turn-over announces itself at one
     // end. The reverse is faster because it is racing the doors parting underneath
-    // it (see GRAY_LEAD_VH), not because it should feel different.
+    // it, not because it should feel different.
     let grayShown = false;
     let grayTween: gsap.core.Tween | null = null;
     function washGray(show: boolean) {
@@ -176,6 +177,10 @@ export function createHeroSequence(
     const crack = { p: 0 };
     const swing = { p: 0 };
     let lastVh = 0;
+    // Which way the reader is going: 1 down, −1 up. The band's cue is the only thing
+    // that reads it, and it needs to survive being called from a tween's onUpdate
+    // rather than from the scroll — hence a stored value and not `self.direction`.
+    let scrollDir = 1;
 
     /**
      * Where the first cued move flips — in *both* directions. SEAL_AT until the move
@@ -310,6 +315,38 @@ export function createHeroSequence(
       // Each line owns its own opacity, so the container's only job is to stay
       // hidden until the first paint has seated them.
       gsap.set(refs.content.current, { opacity: 1 });
+
+      // --- Phase 4: the ribbon draws in, holds, and clears ---
+      // Not scrubbed: each end of the span fires a tween that runs to completion on
+      // its own clock, so the wedges are always at rest before it starts and it can
+      // never be left frozen half-drawn. Expressed as a span so it behaves the same
+      // crossed either way.
+      //
+      // The draw is measured in `copyVh` and the close in raw `vh`, which is the
+      // whole reason this call lives here rather than in onUpdate. The draw overlaps
+      // the last line's exit deliberately (see BAND_OVERLAP) and so has to be on the
+      // clock that line is on — in raw vh it drifted earlier against the copy on
+      // every pass that squeezed it, which is every pass where the doors did not stop
+      // at their nominal mark. The close is long past the copy and has nothing to
+      // stay level with, so it keeps the scroll's own clock.
+      //
+      // Two marks, picked by the direction of travel: the wave commits at
+      // BAND_DRAW_AT going down and lets go at the higher BAND_UNDRAW_AT coming back
+      // up. One mark cannot do both — see BAND_UNDRAW_AT for why the overlap that
+      // reads as a handover downward reads as a collision in reverse.
+      //
+      // Keyed to `scrollDir` and emphatically *not* to the latch. Choosing the mark by
+      // `shown` looks like hysteresis and is its inverse: the release mark sits
+      // *above* the commit mark, so un-drawing at 212 drops the test to 191, which
+      // `copyVh` still satisfies, which draws again, which restores 212 — a flip every
+      // frame, each one killing the tween before it can play. The wave did not close,
+      // it strobed. Direction is stable across a stopped scroll, so this cannot
+      // oscillate: only a genuine reversal changes the mark, and the latch absorbs
+      // the rest.
+      drawBand(
+        copyVh >= (scrollDir < 0 ? BAND_UNDRAW_AT : BAND_DRAW_AT) &&
+          vh < BAND_CLOSE_AT,
+      );
 
       // The panels, on `doorP` going out and closing again on scroll at the end.
       // Each slides out while drifting vertically, the drift finishing ahead of the
@@ -470,6 +507,7 @@ export function createHeroSequence(
         // Progress as real scroll distance through the pin, in vh, so each phase
         // reads as "from here to here" in scroll the user can feel.
         const vh = self.progress * PIN_VH;
+        scrollDir = self.direction;
         // The one piece of scroll state paintStage reads. Set before the cues, since
         // firing one paints immediately.
         lastVh = vh;
@@ -514,12 +552,7 @@ export function createHeroSequence(
         // whatever the three of them currently say.
         paintStage();
 
-        // --- Phase 4: the ribbon draws in, holds, and clears (225 – 285vh) ---
-        // Not scrubbed: each end of the span fires a tween that runs to completion
-        // on its own clock, so the wedges are always at rest before it starts and it
-        // can never be left frozen half-drawn. Expressed as a span so it behaves the
-        // same crossed either way.
-        drawBand(vh >= BAND_DRAW_AT && vh < BAND_CLOSE_AT);
+        // --- Phase 4: the ribbon — cued in paintStage, off the copy's clock.
 
         // --- Phase 5: the closing line, and Phase 6 the wash — both painted in
         // paintStage, off the close's progress rather than off scroll.

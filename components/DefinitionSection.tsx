@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import { gsap, ScrollTrigger } from "@/lib/gsap";
 import { useRevealOnView } from "@/lib/useRevealOnView";
 import { HERO_GRAY_TAIL_VH } from "./HeroNarrative";
@@ -1623,13 +1622,13 @@ export default function DefinitionSection() {
                       : "absolute top-0 left-0 h-screen w-screen"
                   }
                 >
-                  <Image
-                    src="/img/section3-spoon.jpg"
-                    alt=""
-                    fill
-                    className="object-cover"
-                    sizes={reducedMotion ? "50vw" : "100vw"}
-                    priority
+                  <video
+                    src="/video/caviar-falling-video.mp4"
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    className="h-full w-full object-cover"
                   />
                 </div>
               </div>
