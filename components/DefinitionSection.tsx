@@ -223,14 +223,36 @@ const TAIL_AT = LOGO_FADE_AT + LOGO_FADE_VH;
 
 /**
  * Pinned scroll the gesture is given. Not a scrub: the animation is over in
- * TAIL_SECONDS whatever happens here. It is the room that keeps an ordinary
- * scroll from outrunning it — cross this faster than TAIL_VH/TAIL_SECONDS ≈
- * 64vh per second and the pin releases while the dots are still in the air,
- * which is the same trade HeroNarrative's ribbon makes with BAND_HOLD_VH. A
- * reading pace is nowhere near that. Whatever is left over after the gesture
- * lands is the beat on the finished footer before the pin lets go.
+ * TAIL_SECONDS (~2.8s) whatever happens here. It is only the room that keeps an
+ * ordinary scroll from outrunning it — cross this faster than
+ * TAIL_VH/TAIL_SECONDS and the pin releases while the dots are still in the air.
+ *
+ * 24, down from 180 by way of 80 — and small enough that it is no longer really a
+ * guard. That is deliberate, because as a guard it could never have worked: the
+ * gesture is on a clock and this is scroll, so a reader who crosses TAIL_AT and stops
+ * gets the animation for free and still has every remaining vh of this to grind
+ * through on a finished footer. At 180 that was up to ~170vh of nothing, at the very
+ * end of the page. The buffer only ever helped the reader who kept moving, and
+ * punished the one who stopped to watch.
+ *
+ * Being outrun is close to harmless *here specifically*, which is what makes the guard
+ * dispensable. The pin ends at `bottom bottom`, and since this section is last in the
+ * document that instant is also the end of the scroll: the unpinned stage sits exactly
+ * where the pinned one did, so there is no jump and nothing beneath is uncovered, and
+ * the tail plays out in full view on its own clock — `tailTween` paints through
+ * `renderTail`, not through the ScrollTrigger, so losing the pin does not stop it.
+ * The reader simply arrives at the bottom of the page and watches the dots land.
+ *
+ * `scrub: 1` helps rather than hurts at this length: it lags the cue by up to a
+ * second, so the gesture tends to fire right as the scroll runs out, which is where it
+ * wants to be seen.
+ *
+ * All of that is load-bearing and conditional — it holds while nothing follows this
+ * section. `Footer` is currently commented out in app/page.tsx; if it comes back, the
+ * stage will scroll away and uncover it mid-flight, and this has to go back up toward
+ * a rate no gesture can beat (~180).
  */
-const TAIL_VH = 180;
+const TAIL_VH = 24;
 
 /**
  * The camera onto the footer.
@@ -734,10 +756,12 @@ const FOOTER_REVEAL_EASE = gsap.parseEase("sine.inOut");
  *             endpoints are fixed points on screen with the camera in neither,
  *             so the dots hang in the viewport and fall through it while the
  *             page pans behind them.
- *  245–425vh  the scroll the gesture is given (TAIL_VH). It is not driving any
- *             of it — it is the room that stops an ordinary scroll outrunning
- *             the ~2.8s it takes, and whatever is left once the dots have landed
- *             is the beat on the finished footer before the pin releases.
+ *  245–269vh  the last of the scroll, and all the gesture gets (TAIL_VH). It drives
+ *             none of it. Deliberately shorter than the ~2.8s it takes, because
+ *             this is the end of the page: the reader reaches the bottom and the
+ *             dots land there, rather than landing early and leaving a screen of
+ *             finished footer to scroll through. See TAIL_VH for why losing the pin
+ *             mid-flight costs nothing while this section is last.
  *
  * Pinned with GSAP rather than CSS `sticky`, which does not work under
  * ScrollSmoother's transform-based fake scroll (see the note in HeroNarrative).
