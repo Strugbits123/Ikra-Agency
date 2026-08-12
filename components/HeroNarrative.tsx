@@ -104,7 +104,13 @@ const holeClip = (p: number) => {
  * before any of this (see DOOR_SCRUB_VH).
  */
 
-/** Leg 1 of the cued move: the hole seals, and the headline fades with it. */
+/**
+ * Leg 1 of the cued move: the hole seals, and the headline fades with it.
+ *
+ * This is where the move is cued going *down*, and only going down. Where it is
+ * cued coming back up is wherever it actually landed, which is a different mark
+ * and has to be — see `cueAt`, which is where that is tracked and why.
+ */
 const SEAL_AT = 8;
 const SEAL_SECONDS = 0.9;
 
@@ -1377,6 +1383,40 @@ export default function HeroNarrative() {
       // DOOR_OPEN_AT).
       let armVh: number | null = null;
 
+      /**
+       * Where the cued move flips — in *both* directions. It is SEAL_AT until the
+       * move has landed, and from then on it is the scroll position it landed at.
+       *
+       * This exists because a fixed threshold is only correct in one direction, and
+       * the sequence stalled on the way back up because of it. The move is timed,
+       * not scrubbed, so scrolling down it plays over however much scroll the
+       * visitor covers during its 1.6s — cued at 8vh, landing at 40 at a moderate
+       * pace and far later on a flick. The doors' scrubbed leg then starts from
+       * where it landed (`armVh`), so it, too, reverses back to exactly that point
+       * and no further.
+       *
+       * Which left the stretch between SEAL_AT and the landing with nothing in it on
+       * the way up. Going down it is full of motion — it *is* the cued move playing
+       * — but coming back, the scrubbed leg was already spent at its bottom end and
+       * the cue would not reverse until 8vh. So the doors sat frozen a crack open
+       * with the lead line frozen at a fifth of its size, for however much scroll
+       * the move had used going the other way: 30vh at a reading pace, over 100 after
+       * a flick. Exactly the report — stuck, and no amount of scrolling up closed
+       * them until the visitor had walked all the way back to 8.
+       *
+       * Latching the landing point fixes it with the threshold model intact: the
+       * doors come to rest, and the moment the scroll goes back below where they
+       * came to rest, the move reverses. Continuous at the seam, because that is the
+       * same point the scrubbed leg reaches zero at.
+       *
+       * It is deliberately *not* reset when the move reverses. Clearing it there
+       * would drop the threshold back to 8 while the scroll is still at 30 — which
+       * satisfies `vh >= cueAt` again and re-opens the doors on the next frame,
+       * trading the stall for a loop. It resets when the scroll actually reaches the
+       * top instead (below), so a fresh pass down is cued exactly as the first was.
+       */
+      let cueAt = SEAL_AT;
+
       function paintStage() {
         const W = document.documentElement.clientWidth;
         const H = window.innerHeight;
@@ -1568,7 +1608,13 @@ export default function HeroNarrative() {
           // already shut. A move killed mid-flight never gets here, which is
           // correct — nothing has landed.
           onComplete: () => {
-            if (next === STOP_AJAR) armVh = Math.max(DOOR_OPEN_AT, lastVh);
+            if (next !== STOP_AJAR) return;
+            armVh = Math.max(DOOR_OPEN_AT, lastVh);
+            // Where it landed, which from here is also where it reverses. Not
+            // armVh: that one is floored at DOOR_OPEN_AT and so can sit *ahead* of
+            // the scroll on a slow pass, and a threshold ahead of the scroll would
+            // fire the reverse the instant the move finished.
+            cueAt = lastVh;
           },
         });
       }
@@ -1597,11 +1643,18 @@ export default function HeroNarrative() {
           // since firing one paints immediately.
           lastVh = vh;
 
-          // One cue, one threshold: the hole sealing and the doors cracking are a
-          // single move that plays at its own speed (see SEAL_AT). Crossed in
-          // either direction, so scrolling back up walks the same move backwards.
-          // The doors' remaining travel is scrubbed, in paintStage.
-          openTo(vh >= SEAL_AT ? STOP_AJAR : STOP_SHUT);
+          // One cue, one moving threshold: the hole sealing and the doors cracking
+          // are a single move that plays at its own speed (see SEAL_AT), crossed in
+          // either direction so scrolling back up walks the same move backwards.
+          // Going up it reverses from where it landed rather than from SEAL_AT —
+          // see `cueAt` for why a fixed mark stalled the whole sequence there. The
+          // doors' remaining travel is scrubbed, in paintStage.
+          //
+          // Reset first: once the scroll is back at the top the move has nowhere
+          // left to reverse to, so the next pass down is cued from the nominal mark
+          // exactly as the first one was.
+          if (vh <= SEAL_AT) cueAt = SEAL_AT;
+          openTo(vh >= cueAt ? STOP_AJAR : STOP_SHUT);
 
           // The logo would end up over the revealed background, so this took it
           // ink → white straddling the seal — a change of surface rather than a
