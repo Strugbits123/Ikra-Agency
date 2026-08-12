@@ -51,34 +51,33 @@ const STATEMENT_VH = 50;
  * scrolling and cannot be scrubbed back. It reads as an event that happened near
  * the text rather than as the text arriving.
  *
- * Now it is scrubbed, and cued off the hero's wash to gray rather than off its
- * own arrival — HERO_GRAY_TAIL_VH is how much pinned scroll that section has left
- * when the wash starts, so this begins on the same instant the gray does, which
- * is as early as it can be placed at all. That start is *behind* the viewport's
- * bottom edge, and that is the whole of the trick: roughly half the reveal is
- * spent before this section's top edge appears, so the first line of the
- * statement is already legible in the first frame it can be seen in, and the rest
- * of the paragraph resolves under it as the section climbs. Gray arriving and
- * text arriving become one movement instead of two separated by a wait.
+ * It was scrubbed for a while, across the hand-off from the hero's wash to this
+ * section's top edge reaching 55%. That fixed the threshold half of the problem but
+ * kept the other one in a new form: the paragraph resolved at the reader's scroll
+ * rate, so stopping anywhere in the window left it posed at 40% — visible, half
+ * faded, plainly waiting for more input. On a gray screen with nothing else on it,
+ * that is the one place a half-finished pose has nowhere to hide.
  *
- * There is a floor on how much earlier it could ever start, and it is not this
- * constant: until the hero's pin releases, this whole section is below the fold
- * and inside a clipped stage, so no amount of lead time can put the statement on
- * screen. Closing the rest of that gap is the hero's HOLD_VH and GRAY_HOLD_VH,
- * not anything here.
+ * So it is a *cue* now, matching the hero it arrives out of: everything the hero
+ * does on this hand-off is one timed move at one speed (its doors, its wash), and
+ * the text is the third of them. Crossing STATEMENT_REVEAL_AT_PCT — the section's
+ * own top edge just clearing the bottom of the screen, which is the first frame the
+ * paragraph could be seen in at all — fires STATEMENT_REVEAL_SECONDS of rise and
+ * fade that runs to completion whether or not the reader keeps scrolling. Gray
+ * arriving and text arriving are one movement, and there is no gray screen with
+ * nothing on it to sit in.
  *
- * It finishes with the section's top edge 55% up the screen rather than at the
- * pin, so the resolved paragraph gets a settled beat to be read in before Phase 1
- * starts taking it away. That end mark is also what sets how resolved the first
- * line is when it clears the bottom edge — the run-up below the fold is only
- * HERO_GRAY_TAIL_VH long, so the shorter the whole window, the further through it
- * that run-up carries. At 55 the statement is about half resolved on the frame it
- * becomes legible, which is the point of the exercise; pushing this toward 0
- * would stretch the reveal back out and hand the reader a blank first frame
- * again.
+ * 98 rather than 100 so the move starts a hair before the edge is strictly on
+ * screen, absorbing the frame or two ScrollTrigger takes to notice; the reveal is
+ * over well before the section has climbed far enough for Phase 1 to start taking
+ * the statement away.
+ *
+ * The move itself is unchanged from the RevealBlock it began as: 32px of rise and an
+ * opacity out of an `ease-out`. Only its clock has changed, twice.
  */
 const STATEMENT_REVEAL_RISE_PX = 32;
-const STATEMENT_REVEAL_END_PCT = 55;
+const STATEMENT_REVEAL_AT_PCT = 98;
+const STATEMENT_REVEAL_SECONDS = 0.9;
 
 // The round window opens until it covers the frame, and the photo inside
 // dissolves across the second half of that — derived from the growth rather than
@@ -1394,25 +1393,26 @@ export default function DefinitionSection() {
       });
 
       /**
-       * And the statement resolving in across that same hand-off, on the cue the
-       * gray itself is on (see STATEMENT_REVEAL_RISE_PX).
+       * And the statement resolving in on the frame it becomes visible, as one timed
+       * move rather than a scrub (see STATEMENT_REVEAL_RISE_PX).
        *
        * Its own trigger rather than a phase of `render`, because it has to run
        * *before* that one exists: `render` is driven by the pin, which does not
-       * start until this section's top edge reaches the viewport top, and the
-       * whole point of this is to have begun long before then. A trigger keyed to
-       * the section's top edge crossing the screen can start below the fold.
+       * start until this section's top edge reaches the viewport top, and this has
+       * to fire the moment that edge clears the *bottom*. A trigger keyed to the
+       * section's top edge crossing the screen can do that; the pin cannot.
        *
        * It writes the inner element, while `render` writes the wrapper for the
        * exit — one element cannot carry both, since either write rebuilds the
        * whole transform and would drop the other.
        *
-       * onLeave/onLeaveBack pin the end states for the same reason the veil's do:
-       * onUpdate only fires inside the range, so a jump past either end would
-       * otherwise leave the paragraph at whatever it last held. And it is painted
-       * once on creation, so a restored scroll position lands with it already
-       * correct rather than waiting for the first scroll event.
+       * `onToggle` rather than onEnter/onLeaveBack so both directions go through one
+       * latched call, and the ease stays in `paintStatement` with the tween linear —
+       * putting it on the tween as well would apply it twice.
        */
+      const reveal = { p: 0 };
+      let revealShown = false;
+      let revealTween: gsap.core.Tween | null = null;
       const paintStatement = (progress: number) => {
         const p = STATEMENT_REVEAL_EASE(gsap.utils.clamp(0, 1, progress));
         gsap.set(statementRevealRef.current, {
@@ -1420,21 +1420,43 @@ export default function DefinitionSection() {
           opacity: p,
         });
       };
+      const showStatement = (show: boolean) => {
+        if (show === revealShown) return;
+        revealShown = show;
+        const to = show ? 1 : 0;
+        revealTween?.kill();
+        revealTween = gsap.to(reveal, {
+          p: to,
+          // Proportional to the ground left, so a reversal crossed mid-flight runs
+          // back at the rate it came in at.
+          duration: STATEMENT_REVEAL_SECONDS * Math.abs(to - reveal.p),
+          ease: "none",
+          onUpdate: () => paintStatement(reveal.p),
+          overwrite: "auto",
+        });
+      };
       const statementTrigger = ScrollTrigger.create({
         trigger: section,
-        start: `top ${100 + HERO_GRAY_TAIL_VH}%`,
-        end: `top ${STATEMENT_REVEAL_END_PCT}%`,
-        onUpdate: (self) => paintStatement(self.progress),
-        onLeave: () => paintStatement(1),
-        onLeaveBack: () => paintStatement(0),
+        start: `top ${STATEMENT_REVEAL_AT_PCT}%`,
+        end: "bottom top",
+        onToggle: (self) => showStatement(self.isActive),
       });
-      paintStatement(statementTrigger.progress);
+      // The resting state for a restored scroll position, set flat rather than
+      // played: creating the trigger can itself fire onToggle, and a page opening
+      // halfway down should not animate a paragraph that is already meant to be
+      // there.
+      gsap.killTweensOf(reveal);
+      revealShown = statementTrigger.isActive;
+      reveal.p = revealShown ? 1 : 0;
+      paintStatement(reveal.p);
 
       return () => {
         cancelled = true;
         sizeObserver.disconnect();
-        // Created inside runTail, so the context never collected it.
+        // Created inside runTail and inside showStatement, so the context never
+        // collected either.
         tailTween?.kill();
+        revealTween?.kill();
         trigger.kill();
         veilTrigger.kill();
         statementTrigger.kill();

@@ -44,8 +44,12 @@ export const STACK_OUT = gsap.parseEase("sine.inOut");
 /**
  * How much of the lead line's growth is spent fading up. It grows out of a literal
  * point, so without this it arrives as a speck on the orange; a fade across the
- * first slice of the growth resolves it out of the surface instead. 0.18 of the
- * growth is ~30vh, i.e. one ordinary arrival's worth of scroll.
+ * first slice of the growth resolves it out of the surface instead.
+ *
+ * Sized in growth and not in scroll, which is what has kept it right through the
+ * opening becoming fully cued: the doors carry the line the whole way now, and 0.18
+ * of the growth is very nearly the whole of the crack (see DOOR_AJAR), so the line
+ * resolves out of the orange on the first scroll and does its growing on the second.
  */
 const GROW_FADE = 0.18;
 

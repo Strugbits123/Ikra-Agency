@@ -10,28 +10,28 @@ import {
   BAND_DRAW_AT,
   BAND_DRAW_SECONDS,
   BAND_HIDE_SECONDS,
+  CLOSE_SEALED_P,
+  CLOSE_SECONDS,
   COPY_END,
   COPY_SQUEEZE_MAX,
   DOOR_AJAR,
   DOOR_CLOSE_AT,
-  DOOR_CLOSE_VH,
   DOOR_OPEN_AT,
-  DOOR_SCRUB_VH,
   GAP_LINES,
-  GRAY_AT,
   GRAY_HIDE_SECONDS,
   GRAY_SECONDS,
   LEAD_HOLD_VH,
   LEAD_OUT_AT,
   LEAP_AT,
   LEAP_IN_VH,
-  LEAP_OUT_AT,
-  LEAP_OUT_VH,
   OPENING_REVERSE_SPEED,
+  OPEN_CUE_GAP_VH,
+  OPEN_SECONDS,
   PIN_VH,
   SEAL_AT,
   SEAL_SECONDS,
   STOP_AJAR,
+  STOP_OPEN,
   STOP_SHUT,
   ramp,
 } from "./timeline";
@@ -134,31 +134,63 @@ export function createHeroSequence(
       });
     }
 
-    // --- The opening two beats, both off the scrub (see SEAL_AT) ---
+    // The doors' return, cued the same way (see DOOR_CLOSE_AT). Its own tween and
+    // not a fourth leg of the opening's path: the two are separated by the whole
+    // middle of the section, so there is no flight either could interrupt, and the
+    // close carries the wash and the closing line rather than the hole and the gap
+    // copy.
+    //
+    // One cue and not two. Splitting it — half the travel on one scroll, the rest on
+    // the next, mirroring the opening — was tried and reverted: the marks have to sit
+    // about a notch apart, and a notch is crossed well inside the first leg's own
+    // duration, so the second gesture retargets a tween that is still flying and the
+    // panels skip the end of their travel. The opening survives that because its
+    // legs are a *seal* and a *crack*, two different things; here both legs are the
+    // same panels on the same path, and the join is the part you watch.
+    //
+    // `power2.inOut` on the tween, so the panels leave and arrive at rest — the same
+    // shape LEG_EASE gives each leg of the opening, which is what "retraces the
+    // opening" has to mean once the clock under it is time rather than scroll. The
+    // duration is proportional to the ground left, so a reversal mid-close runs back
+    // at the rate it came out at instead of taking the full CLOSE_SECONDS to cover a
+    // sliver.
+    const close = { p: 0 };
+    let closing = false;
+    let closeTween: gsap.core.Tween | null = null;
+    function closeDoors(shut: boolean) {
+      if (shut === closing) return;
+      closing = shut;
+      const to = shut ? 1 : 0;
+      closeTween?.kill();
+      closeTween = gsap.to(close, {
+        p: to,
+        duration: CLOSE_SECONDS * Math.abs(to - close.p),
+        ease: "power2.inOut",
+        onUpdate: paintStage,
+        overwrite: "auto",
+      });
+    }
+
+    // --- The opening, all three legs of it off the scrub (see SEAL_AT) ---
     const seal = { p: 0 };
     const crack = { p: 0 };
+    const swing = { p: 0 };
     let lastVh = 0;
-    // Where the doors' scrubbed leg measures from: null until the cued move has
-    // landed, so that leg cannot contribute while the hole is still closing (see
-    // DOOR_OPEN_AT).
-    let armVh: number | null = null;
 
     /**
-     * Where the cued move flips — in *both* directions. SEAL_AT until the move has
-     * landed, and from then on the scroll position it landed at.
+     * Where the first cued move flips — in *both* directions. SEAL_AT until the move
+     * has landed, and from then on the scroll position it landed at.
      *
      * A fixed threshold is only correct going down, and the sequence stalled on the
      * way back up because of it. The move is timed, so going down it plays across
      * however much scroll the visitor covers during its 1.6s — landing at 40vh at a
-     * moderate pace, far later on a flick — and the doors' scrubbed leg starts from
-     * where it landed (`armVh`), so it too reverses only back to that point. That
-     * left the stretch between SEAL_AT and the landing empty on the way up: doors
-     * frozen a crack open, lead line frozen at a fifth of its size, for 30vh at a
-     * reading pace and over 100 after a flick.
+     * moderate pace, far later on a flick — and everything keyed to the landing
+     * reverses only back to that point, leaving the stretch between SEAL_AT and the
+     * landing empty on the way up: doors frozen a crack open, lead line frozen at a
+     * fifth of its size, for 30vh at a reading pace and over 100 after a flick.
      *
      * Latching the landing keeps the threshold model and fixes it — the move
-     * reverses the moment the scroll drops below where the doors came to rest, which
-     * is also where the scrubbed leg reaches zero, so the seam is continuous.
+     * reverses the moment the scroll drops below where the doors came to rest.
      *
      * Deliberately *not* reset when the move reverses: that would drop the threshold
      * back to 8 while the scroll is still at 30, re-satisfying `vh >= cueAt` and
@@ -166,6 +198,29 @@ export function createHeroSequence(
      * the scroll actually reaches the top instead (below).
      */
     let cueAt = SEAL_AT;
+
+    /**
+     * Where the *second* cued move flips, on the same model and for the same reason:
+     * a notch of scroll past wherever the crack landed, floored at DOOR_OPEN_AT.
+     *
+     * Null until the crack has landed, which is what keeps the two cues from ever
+     * firing as one on a slow pass — there is no mark to cross until leg 2 is done,
+     * so however far the scroll has already run, the swing starts from rest with the
+     * hole shut and the crack finished.
+     *
+     * Unlike `cueAt` this one needs no separate latch for the way back up: the swing
+     * costs no scroll and nothing downstream is keyed to a mark inside it, so
+     * reversing at the same place it fired is exactly right — the doors are fully
+     * open everywhere above it and at the crack everywhere below.
+     */
+    let openCueAt: number | null = null;
+
+    /**
+     * Where the swing came to rest, latched on arrival — the doors' true stop, and
+     * what the copy sequence measures itself from. Null while they are anywhere short
+     * of fully open (see `restVh`).
+     */
+    let openLandedVh: number | null = null;
 
     function paintStage() {
       const W = document.documentElement.clientWidth;
@@ -197,21 +252,14 @@ export function createHeroSequence(
 
       // --- Phase 3: the doors, and the copy they hand over to ---
       //
-      // How far open they are, from the two halves that drive them: the cued crack
-      // and the scrubbed remainder. Summed rather than switched between, so there is
-      // no frame where one hands over to the other — the first term is capped at
-      // DOOR_AJAR and the second starts from zero, and a fast scroll that begins the
-      // second while the first is still flying simply opens them sooner instead of
-      // jumping.
+      // How far open they are, from the two legs that carry them out: the crack,
+      // capped at DOOR_AJAR, and the swing that covers the rest. Summed rather than
+      // switched between, so there is no frame where one hands over to the other.
       //
-      // `sine.inOut` on the scrubbed half so it leaves the crack at rest and arrives
-      // at rest, matching the copy's arrivals (see STACK_IN).
-      const doorP =
-        crack.p +
-        (1 - DOOR_AJAR) *
-          (armVh === null
-            ? 0
-            : STACK_IN(ramp(vh, [armVh, armVh + DOOR_SCRUB_VH])));
+      // Neither term is scrubbed — both are read straight off `head.t` (see
+      // readHead), and the sum lives here only because the door *close* below still
+      // is, and both ends have to write the same transform from one place.
+      const doorP = crack.p + swing.p;
 
       // The aperture rather than the panels. They are DOOR_PANEL_W wide each, so
       // they overlap until DOOR_SEALED_AT and nothing has opened before that — this
@@ -224,11 +272,12 @@ export function createHeroSequence(
       // between a tween and the scrub has never disturbed it.
       const gapP = ramp(doorP, [DOOR_SEALED_AT, 1]);
 
-      // Where the doors will come to rest, live: `armVh` once the cued move has
-      // landed, and the same expression `armVh` is about to be set to before that —
-      // so this is continuous across the landing instead of jumping to it, and the
-      // copy cannot start while the move is still flying.
-      const restVh = Math.max(DOOR_OPEN_AT, armVh ?? vh) + DOOR_SCRUB_VH;
+      // Where the doors come to rest, live: the latched landing once the swing has
+      // arrived, and before that a value held at or ahead of the scroll — so the copy
+      // cannot start while the doors are still moving, and the handover is continuous
+      // rather than a jump, since `openLandedVh` is set to `vh` at the very instant
+      // this expression equals it.
+      const restVh = openLandedVh ?? Math.max(vh, openCueAt ?? DOOR_OPEN_AT);
 
       // The copy's own clock. Starts where the doors actually stopped plus the same
       // beat of rest, ends at COPY_END whatever happened, so a late start squeezes
@@ -270,7 +319,7 @@ export function createHeroSequence(
       // scaled back to zero, so the panels retrace the exact path they came out on.
       // Note the copy rides `doorP`, not this — it must stay gone while the doors
       // return, not play itself backwards.
-      const closeP = ramp(vh, [DOOR_CLOSE_AT, DOOR_CLOSE_AT + DOOR_CLOSE_VH]);
+      const closeP = close.p;
       const doorNow = doorP * (1 - closeP);
       const drift = gsap.utils.clamp(0, 1, doorNow / 0.7);
       gsap.set(refs.panelLeft.current, {
@@ -281,6 +330,34 @@ export function createHeroSequence(
         x: doorNow * W * DOOR_REST_X,
         y: -drift * H * DOOR_REST_Y,
       });
+
+      // --- Phase 5: the closing line, arriving on scroll and leaving with the doors
+      //
+      // Seated where the ribbon was, not below it, so the wave resolves into the
+      // words. It arrives like the gap copy but recedes instead of fading (see
+      // leapSeat), scaling to nothing as the panels shut so it reads as being drawn
+      // back through the gap they are closing.
+      //
+      // The exit is the close's own progress rescaled to reach 1 at the seal — no
+      // STACK_OUT, and no window of its own in vh. Both halves of that matter: an
+      // eased exit holds the line near full size exactly when the panels are already
+      // advancing on it, and a scroll window would come unstuck from a close that no
+      // longer costs scroll.
+      gsap.set(
+        refs.leap.current,
+        leapSeat(
+          H,
+          STACK_IN(ramp(vh, [LEAP_AT, LEAP_AT + LEAP_IN_VH])),
+          gsap.utils.clamp(0, 1, closeP / CLOSE_SEALED_P),
+        ),
+      );
+
+      // --- Phase 6: orange turns over to gray, on the close's own progress ---
+      // Fired the instant the panels meet rather than at a mark in vh, which is what
+      // guarantees there is no flat-orange stall between the two at any scroll speed
+      // (see CLOSE_SEALED_P). Latched, so this is a threshold and not a scrub — the
+      // wash is one timed move in both directions (see washGray).
+      washGray(closeP >= CLOSE_SEALED_P);
 
       // A 1080p decode is not free, so the footage only runs while some of it can be
       // seen — which covers both ends of the sequence.
@@ -297,26 +374,33 @@ export function createHeroSequence(
       }
     }
 
-    // --- The cued half of the opening: one number, two resting points ---
+    // --- The opening: one number, three resting points ---
     //
     // `head.t` is a position along that path, measured in seconds (see SEAL_AT), and
-    // `readHead` is the only thing that writes seal.p and crack.p. A tween per leg
-    // was the alternative, and it has a race in it that this does not: two tweens
-    // would own the same property whenever one started before the other had
-    // finished. Here there is only ever one tween, over one number, and the cue
-    // crossed mid-flight just changes where it is heading.
+    // `readHead` is the only thing that writes seal.p, crack.p and swing.p. A tween
+    // per leg was the alternative, and it has a race in it that this does not: three
+    // tweens would own the same property whenever one started before another had
+    // finished. Here there is only ever one tween, over one number, and a cue crossed
+    // mid-flight just changes where it is heading.
+    //
+    // Which is why the second gesture's swing is a *leg of this path* rather than a
+    // move of its own, even though it is cued separately: a flick that crosses both
+    // marks in quick succession retargets the one tween from STOP_AJAR to STOP_OPEN
+    // and the doors carry on out at the same rate, with nothing to collide with.
     const head = { t: STOP_SHUT };
     const LEG_EASE = gsap.parseEase("power2.inOut");
 
     function readHead() {
       const t = head.t;
       seal.p = LEG_EASE(gsap.utils.clamp(0, 1, t / SEAL_SECONDS));
-      // Only as far as DOOR_AJAR: the rest of the doors' travel is scrubbed and is
-      // added to this in paintStage. Leg 2 starts exactly where leg 1 ends, so the
-      // hole is shut before the panels move.
+      // Each leg starts exactly where the one before it ends, so the hole is shut
+      // before the panels move and the crack is complete before the swing begins.
       crack.p =
         DOOR_AJAR *
         LEG_EASE(gsap.utils.clamp(0, 1, (t - SEAL_SECONDS) / AJAR_SECONDS));
+      swing.p =
+        (1 - DOOR_AJAR) *
+        LEG_EASE(gsap.utils.clamp(0, 1, (t - STOP_AJAR) / OPEN_SECONDS));
     }
 
     let travel: gsap.core.Tween | null = null;
@@ -325,10 +409,13 @@ export function createHeroSequence(
       if (next === stop) return;
       const back = next < stop;
       stop = next;
-      // Going back to shut disarms the scrubbed leg, so a second pass down arms
-      // again from wherever that pass happens to land rather than from the first
-      // one's origin.
-      if (next === STOP_SHUT) armVh = null;
+      // Anything short of fully open un-lands the swing, so the copy's clock goes
+      // back to tracking the scroll rather than a stop that no longer holds.
+      if (next !== STOP_OPEN) openLandedVh = null;
+      // Going back to shut also drops the second cue's mark, so a fresh pass down
+      // re-measures it from wherever *that* pass's crack lands rather than from the
+      // first one's.
+      if (next === STOP_SHUT) openCueAt = null;
       travel?.kill();
       travel = gsap.to(head, {
         t: next,
@@ -343,18 +430,24 @@ export function createHeroSequence(
           readHead();
           paintStage();
         },
-        // Only on arrival, and only at the open end: this is the promise that the
-        // doors' scrubbed leg starts from rest, at zero progress, with the hole
-        // already shut. A move killed mid-flight never gets here, which is correct —
-        // nothing has landed.
+        // Only on arrival: a move killed mid-flight never gets here, which is
+        // correct — nothing has landed.
         onComplete: () => {
-          if (next !== STOP_AJAR) return;
-          armVh = Math.max(DOOR_OPEN_AT, lastVh);
-          // Where it landed, which from here is also where it reverses. Not armVh:
-          // that one is floored at DOOR_OPEN_AT and so can sit *ahead* of the scroll
-          // on a slow pass, and a threshold ahead of the scroll would fire the
-          // reverse the instant the move finished.
+          if (next === STOP_OPEN) {
+            openLandedVh = lastVh;
+            return;
+          }
+          // `!back` matters now that STOP_AJAR is reachable from both sides: coming
+          // back down off a reversed swing, re-marking `cueAt` to the current scroll
+          // would put the crack's own threshold level with the scroll and flap the
+          // doors between shut and ajar on alternate frames.
+          if (next !== STOP_AJAR || back) return;
+          // Where the crack landed, which from here is both where it reverses and
+          // what the second cue is measured out from. Deliberately the raw landing
+          // and not a floored one: a threshold sitting *ahead* of the scroll would
+          // fire the reverse the instant the move finished.
           cueAt = lastVh;
+          openCueAt = Math.max(DOOR_OPEN_AT, lastVh + OPEN_CUE_GAP_VH);
         },
       });
     }
@@ -377,23 +470,33 @@ export function createHeroSequence(
         // Progress as real scroll distance through the pin, in vh, so each phase
         // reads as "from here to here" in scroll the user can feel.
         const vh = self.progress * PIN_VH;
-        const H = window.innerHeight;
         // The one piece of scroll state paintStage reads. Set before the cues, since
         // firing one paints immediately.
         lastVh = vh;
 
-        // One cue, one moving threshold: the hole sealing and the doors cracking are
-        // a single move that plays at its own speed (see SEAL_AT), crossed in either
-        // direction so scrolling back up walks the same move backwards. Going up it
-        // reverses from where it landed rather than from SEAL_AT — see `cueAt` for
-        // why a fixed mark stalled the whole sequence there. The doors' remaining
-        // travel is scrubbed, in paintStage.
+        // Two cues, two moving thresholds, one move. The first scroll seals the hole
+        // and cracks the doors (see SEAL_AT); the second swings them the rest of the
+        // way (see OPEN_CUE_GAP_VH). Both are crossed in either direction, so
+        // scrolling back up walks the same legs backwards, and both reverse from
+        // where they landed rather than from a fixed mark — see `cueAt` for why a
+        // fixed one stalled the whole sequence.
+        //
+        // Written as one target rather than two `if`s: the tween's stop is a position
+        // along a single path, so the only question each frame is which of the three
+        // the scroll is currently asking for. A flick that crosses both marks in a
+        // frame asks for STOP_OPEN directly and gets one continuous move to it.
         //
         // Reset first: once the scroll is back at the top the move has nowhere left
         // to reverse to, so the next pass down is cued from the nominal mark exactly
         // as the first one was.
         if (vh <= SEAL_AT) cueAt = SEAL_AT;
-        openTo(vh >= cueAt ? STOP_AJAR : STOP_SHUT);
+        openTo(
+          vh < cueAt
+            ? STOP_SHUT
+            : openCueAt !== null && vh >= openCueAt
+              ? STOP_OPEN
+              : STOP_AJAR,
+        );
 
         // The logo would end up over the revealed background, so this took it
         // ink → white straddling the seal — a change of surface rather than a third
@@ -411,50 +514,28 @@ export function createHeroSequence(
         // whatever the three of them currently say.
         paintStage();
 
-        // --- Phase 4: the ribbon draws in, holds, and clears (303 – 363vh) ---
+        // --- Phase 4: the ribbon draws in, holds, and clears (225 – 285vh) ---
         // Not scrubbed: each end of the span fires a tween that runs to completion
         // on its own clock, so the wedges are always at rest before it starts and it
         // can never be left frozen half-drawn. Expressed as a span so it behaves the
         // same crossed either way.
         drawBand(vh >= BAND_DRAW_AT && vh < BAND_CLOSE_AT);
 
-        // --- Phase 5: the closing line takes its place (398 – 559vh) ---
-        // Seated where the ribbon was, not below it, so the wave resolves into the
-        // words. It arrives like the gap copy but recedes instead of fading (see
-        // leapSeat), scaling to nothing across the door close so it reads as going
-        // back through the gap the panels are shutting.
-        //
-        // The exit takes the raw ramp deliberately — no STACK_OUT. The eased version
-        // holds the line near full size early, which is exactly when the panels are
-        // already advancing on it.
-        gsap.set(
-          refs.leap.current,
-          leapSeat(
-            H,
-            STACK_IN(ramp(vh, [LEAP_AT, LEAP_AT + LEAP_IN_VH])),
-            ramp(vh, [LEAP_OUT_AT, LEAP_OUT_AT + LEAP_OUT_VH]),
-          ),
-        );
+        // --- Phase 5: the closing line, and Phase 6 the wash — both painted in
+        // paintStage, off the close's progress rather than off scroll.
 
-        // --- Phase 6: the doors close (468 – 593vh), driven in paintStage ---
-
-        // --- Phase 7: orange turns over to gray (fires at 574vh) ---
-        // Cued just past SEALED_AT rather than off the door close, because the
-        // panels seal 34vh before they stop moving and all of that is travel with no
-        // visible edges in it.
+        // --- Phase 6: the doors close (cue, fires at 390vh) ---
+        // A threshold like the wash's, crossed in either direction so scrolling back
+        // up parts them again on the same timed move.
         //
-        // Not scrubbed: crossing this threshold in either direction fires a tween
-        // that runs to completion (see washGray). A threshold and not a span like
-        // the ribbon's, because nothing past it ever takes the gray back off — the
-        // pin's own end is the only upper bound it needs.
-        //
-        // A gray layer over the top rather than a background-colour tween: the
-        // orange is painted by three separate elements here (the section and both
-        // panels), and one layer over them is a single number instead of three that
-        // have to agree.
-        washGray(vh >= GRAY_AT);
+        // The wash rides this rather than a mark of its own, so the gray follows the
+        // panels meeting at every scroll speed. Which is also why the gray is a layer
+        // over the top rather than a background-colour tween: the orange is painted
+        // by three separate elements here (the section and both panels), and one
+        // layer over them is a single number instead of three that have to agree.
+        closeDoors(vh >= DOOR_CLOSE_AT);
 
-        // --- Phase 8: a short hold on flat gray — already the next section's
+        // --- Phase 7: a short guard on flat gray — already the next section's
         // colour, so the pin releasing is invisible.
       },
     });
@@ -463,6 +544,7 @@ export function createHeroSequence(
       // Created inside onUpdate, so the context never collected them.
       bandTween?.kill();
       grayTween?.kill();
+      closeTween?.kill();
       travel?.kill();
       trigger.kill();
     };
