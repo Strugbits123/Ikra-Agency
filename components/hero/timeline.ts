@@ -7,73 +7,82 @@ import { DOOR_SEALED_AT } from "./doors";
  * Written as a chain of derivations rather than a list of numbers, so retiming
  * any beat carries the rest along instead of quietly opening a gap or an overlap.
  *
- * Mostly scrubbed, but not entirely, and the exceptions are the point of the
- * opening: six beats are *cues* rather than windows. Crossing one starts a move
- * that plays to completion on its own clock, so it costs no scroll distance,
- * cannot be left half-finished by stopping, and runs at the same speed however
- * fast the wheel was turned. Those six are the three stops of the opening, the
- * ribbon, the doors' close, and the orange→gray wash — marked "(cue)" below.
+ * The copy is scrubbed; four beats are *cues* — the opening, the ribbon, the doors'
+ * close and the orange→gray wash. Crossing a cue starts a move that plays to completion
+ * on its own clock, so it costs no designed scroll distance, cannot be left
+ * half-finished by stopping, and runs at the same speed however fast the wheel was
+ * turned. Marked "(cue)" below.
  *
- * What is left scrubbed is the copy, and only the copy: three lines passing through
- * one seat is a stretch of reading, and reading is the reader's own pace. Every
- * gesture that is a *move* — a hole shutting, doors swinging, a ribbon drawing, a
- * colour turning over — is cued, because none of them is better for being ground out
- * a notch at a time.
+ * The trouble with a cue, and the thing this file has been rewritten around three times,
+ * is that it costs an *unknown* amount of real scroll — the reader keeps moving while it
+ * plays — so it lands at a mark that depends on their speed, and anything measured from
+ * that landing inherits it. An unbounded landing at the front of the section is what
+ * made the gap copy come apart on a fast scroll.
+ *
+ * The three cues in the tail are safe because nothing is keyed to a mark behind them.
+ * The opening is safe for a different reason, and it is the one idea worth carrying out
+ * of here: it has a **scroll floor** under it. The move may run ahead of the scroll and
+ * never behind it, so the landing is bounded by DOOR_OPEN_AT even though its timing is
+ * not — one scroll of any size plays the whole thing on the clock, and the copy below
+ * still starts from a fixed number. See OPEN_VH.
+ *
+ * The rule for anything added here: a cue at the front needs a floor, or the beats
+ * behind it need to not exist.
  *
  * Phases (see PIN_VH):
- *       8vh    (cue) one continuous 1.6s move with two things in it, and the whole
- *              of the first scroll. First the hole the footage is seen through
- *              seals over 0.9s — the footage never moves or resizes, and the
- *              headline fades on the same driver so it is gone at the instant the
- *              hole shuts. Then the doors crack open over 0.7s: diagonally, and
- *              only a fifth of the way (see DOOR_AJAR). 8vh is under one wheel
- *              notch, so one scroll buys the pair of them.
- *      14vh    (cue) the second scroll, and the whole of the doors' remaining
- *              travel: 0.9s to swing the rest of the way and stop partway across
- *              the screen, leaving wedges in the bottom-left and top-right corners
- *              for good. One gesture opens them, however far that gesture happens
- *              to carry. 14 is the *earliest* this can fire — the real mark is a
- *              notch past wherever the crack landed (see OPEN_CUE_GAP_VH).
- *              "growth creates a gap" is not played over the opening — it *is* the
- *              opening, growing out of the centre point the panels part from with
- *              its width locked to the gap's in constant proportion (see
- *              leadSeat), so it grows a fifth of the way with the crack above and
- *              the rest here, reaching full size on the frame the panels stop.
- *   14–34vh    the line holds at full size, doors at rest, nothing else moving.
- *   34–64vh    it climbs away, shrinking and blurring out — an ordinary exit. This
- *              and the two lines below are the numbers for anyone whose doors came
- *              to rest at the nominal mark; the copy sequence measures from where
- *              they actually stopped (see COPY_SQUEEZE_MAX).
- *   49–94vh    "between who you've become" rises into the seat as the lead line
+ *      1vh     (cue) the whole opening, and the whole of the first scroll however
+ *              small it is: 1.5s of one continuous eased path with no resting place
+ *              anywhere inside it. The panels travel across all of it, though the
+ *              first 41% is invisible because they are still overlapped; the hole
+ *              the footage is seen through closes across exactly that stretch, so
+ *              the footage hands straight over from the shrinking hole to the
+ *              widening gap with no bare orange between them (SEAL_OVERSHOOT). The
+ *              footage never moves or resizes, and the headline fades on the hole's
+ *              driver so it is gone at the instant the hole shuts. Then the doors
+ *              carry on opening diagonally and stop partway across the screen,
+ *              leaving wedges in the bottom-left and top-right corners for good.
+ *              "growth creates a gap" is not played *over* this — it *is* this,
+ *              growing out of the centre point the panels part from with its width
+ *              locked to the gap's in constant proportion (see leadSeat), so it
+ *              reaches full size on the frame the panels stop.
+ *   ≤53vh      where that lands, which depends on how far the reader travelled
+ *              during the 1.5s: ~17vh at a reading pace, 53 at a flick. 53 is the
+ *              ceiling and not a preference — past it the scroll floor has taken
+ *              over and the doors are open regardless (see OPEN_VH). Everything
+ *              below is written against the ceiling, so none of it moves.
+ *   53–65vh    the line holds at full size, doors at rest, nothing else moving —
+ *              longer than 12vh for anyone whose doors landed early (LEAD_HOLD_VH).
+ *   65–95vh    it climbs away, shrinking and blurring out — an ordinary exit.
+ *   80–125vh   "between who you've become" rises into the seat as the lead line
  *              leaves it; the overlap is what makes an exchange one gesture rather
  *              than a swap. 45vh of arrival — about one scroll gesture (COPY_IN_VH).
- *   94–102vh   it holds.
- *  102–132vh   it climbs away.
- *  117–162vh   "how the world sees you" rises in behind it, on the same overlap.
- *  162–170vh   it holds.
- *  170–200vh   it climbs away, clearing the stage — and from 0.7 of the way through
+ *  125–133vh   it holds.
+ *  133–163vh   it climbs away.
+ *  148–193vh   "how the world sees you" rises in behind it, on the same overlap.
+ *  193–201vh   it holds.
+ *  201–231vh   it climbs away, clearing the stage — and from 0.7 of the way through
  *              that exit the wave is already coming in under it (BAND_DRAW_AT).
- *  191–251vh   (cue, both ends) the wavy ribbon draws in right-to-left (a clip,
+ *  222–282vh   (cue, both ends) the wavy ribbon draws in right-to-left (a clip,
  *              not a fade), bridging the two wedges, then closes the same way
  *              round — see BAND_DRAW_AT.
- *  251–283vh   "until you make the leap" fades up into the space the ribbon is
+ *  282–314vh   "until you make the leap" fades up into the space the ribbon is
  *              vacating, at the same seat and sized to the same span — beginning on
  *              the very instant the wave starts to close, so the wedges are never
  *              bare between them (see LEAP_AT).
- *  283–321vh   it holds.
- *     321vh    (cue) the doors close over 1.1s, retracing their opening exactly, and
+ *  314–352vh   it holds.
+ *     352vh    (cue) the doors close over 0.95s, retracing their opening exactly, and
  *              the third scroll is the whole of it. The line recedes on the same
  *              progress, scaling to nothing at full opacity and never fading,
  *              reaching zero exactly as the panels meet — 72% of the way through the
  *              close, since closing retraces the opening (see CLOSE_SEALED_P). The
  *              remaining 28% is the identical flat orange rectangle every frame.
- *  321–351vh   pinned scroll held over that close so an ordinary gesture cannot
+ *  352–369vh   pinned scroll held over that close so an ordinary gesture cannot
  *              unpin the stage while the panels are still moving (DOOR_CLOSE_VH).
  *              Not the close's length — it plays at its own speed inside this.
  *              (cue) the moment the panels meet, the sealed orange washes over to
  *              the next section's gray, off the close's progress rather than a mark
  *              of its own so nothing can open a flat-orange stall between the two.
- *  351–361vh   the last 10vh of the pin, and all that is left of it. The wash
+ *  369–373vh   the last 4vh of the pin, and all that is left of it. The wash
  *              is playing, DefinitionSection's veil is fading in over it to the
  *              same gray, and its statement is resolving below the fold — all
  *              three cued off this one instant (see HERO_GRAY_TAIL_VH). The pin
@@ -83,117 +92,154 @@ import { DOOR_SEALED_AT } from "./doors";
  */
 
 /**
- * Why the whole opening is cued, and what that costs:
+ * Why the opening is scrubbed, and what that costs.
  *
- * A scrubbed phase costs scroll to play, which is right for the copy below and
- * wrong for the hole sealing — a wheel notch is ~11vh, and no window a hole can
- * visibly close across fits inside one notch (110vh and 28vh both read as "two or
- * three scrolls"). So the seal is a cue, and the doors' crack belongs inside the
- * same cued move rather than after it: the first scroll should visibly start the
- * doors, not just close the video.
+ * It was cued for two versions: crossing 8vh fired one 1.6s move that sealed the hole
+ * and cracked the doors, and a second mark fired a 0.9s swing. That is a better *door* —
+ * one gesture, one speed, never parked half open — and it is what broke everything
+ * behind it, for a reason worth stating plainly.
  *
- * Their remaining travel was scrubbed for the same reason it no longer is. Scrubbed
- * across 70vh it was faithful to the finger, but it took five or six notches to
- * finish a gesture the first scroll had already started: the doors sat visibly
- * half-open and had to be ground the rest of the way. It is a third cue now, so the
- * second scroll swings them fully open in one move, at one speed, whatever the
- * gesture was — and the 70vh it no longer needs came off the section rather than
- * being left as dead scroll (see DOOR_OPEN_AT).
+ * A cue costs no *designed* scroll but consumes real scroll, because the reader keeps
+ * moving while it plays. So the doors came to rest wherever 2.5 seconds of scrolling
+ * happened to reach: 52vh at a reading pace, 119vh at an ordinary one, 327vh on a fast
+ * scroll — out of a 342vh section. Everything after the doors is measured from where
+ * they stop, so the gap copy had 290vh of room, or 223, or 15. It was compressed to fit
+ * (1.3× / 2.7× / 3.3×), and past the cap on that compression it had to *start before the
+ * doors stopped* — which is the visible fault: the lead line's exit ramp running while
+ * the aperture was still scaling it up, and the two lines behind it flashing past. Three
+ * different sequences out of one section, decided by the wheel.
  *
- * The cost is known and accepted: two cues cannot be separated *reliably* by
- * distance. ScrollSmoother keeps delivering scroll for a second or more after the
- * gesture ends, so a hard flick's tail crosses the second mark on its own and the
- * doors run shut→open in one continuous motion, never parking at the crack. That
- * reads as fast rather than as broken — it is the same move without the pause in
- * it — and the alternative, arming the second cue only once input has settled,
- * makes the doors wait on a timer the visitor cannot see or hurry.
- * OPEN_CUE_GAP_VH is the whole of the defence, and it is sized so that an ordinary
- * scroll parks at the crack and only a flick runs the two together.
+ * Scrubbing the legs fixed all of that — the doors rested at DOOR_OPEN_AT at every
+ * speed, so the copy played at 1.00× whether the reader crawled or flicked — and it
+ * could not deliver the beat this section is actually built on. A scrubbed span is a
+ * *distance*; how long it takes is the reader's business. So it was tried at 20vh, which
+ * was a quarter of a second and jerky, and at 34vh, which looked right at 0.7s and was
+ * three vh longer than a wheel notch could carry — one scroll sealed the video, barely
+ * moved the doors, and left a blank orange screen. There is no length that does both: no
+ * span a door can visibly swing across fits inside 11vh.
+ *
+ * So the opening is timed again, and the floor is what makes that safe this time. The
+ * clock gives "one scroll opens it" for a gesture of any size; the floor caps the
+ * landing at DOOR_OPEN_AT so the copy below still starts from a fixed number, which is
+ * the whole of what the cued versions got wrong. Both properties, and the only thing
+ * paid for them is that DOOR_OPEN_AT is a *ceiling* rather than a rest position, so
+ * LEAD_HOLD_VH carries the slack for readers whose doors landed early.
  */
 
 /**
- * Leg 1 of the cued move: the hole seals, and the headline fades with it.
+ * Where the opening is cued: the first scroll of any size, and the whole of it.
  *
- * This is where the move is cued going *down*, and only going down. Coming back
- * up it is cued wherever it actually landed, which is a different mark and has to
- * be — see `cueAt` in ./sequence.
+ * From 1 rather than 0 so the first pixel of scroll does not already have the footage
+ * closing — the entrance has only just finished fading it in.
  */
-export const SEAL_AT = 8;
-export const SEAL_SECONDS = 0.9;
+export const SEAL_AT = 1;
 
 /**
- * Leg 2 of the cued move: the doors crack open, in the same breath as the seal.
+ * How long the whole opening takes when the reader is not outrunning it, and how that
+ * is split between the two legs.
  *
- * DOOR_AJAR is how far "a little bit" is, as a fraction of the doors' full travel.
- * It has to clear DOOR_SEALED_AT (~0.276) to be visible at all — below that the
- * panels still overlap and the stage is unbroken orange — so 0.42 is really 0.2 of
- * the *aperture*, about 8% of the screen's width. Cracked open, unmistakably not
- * open.
+ * A pure distance cannot do this job, which is what the two attempts before this one
+ * established. The opening was scrubbed across 20vh and then 34vh; the first was quick
+ * and jerky, and the second — long enough to look right at 0.7s — left a wheel notch
+ * short of finishing it, so one scroll sealed the video and barely moved the doors and
+ * the reader was looking at a blank orange screen. There is no length that fixes both:
+ * a notch is ~11vh, and no span a door can visibly swing across fits inside one.
+ *
+ * So it is timed. Crossing SEAL_AT starts a move that plays to completion on its own
+ * clock, which is what makes "one scroll opens it" true for a gesture of *any* size,
+ * a single notch included. SEAL_FRAC splits the path: 0.42s of the video closing, then
+ * 1.08s of the doors, back to back with nothing between them.
  */
-export const DOOR_AJAR = 0.42;
-export const AJAR_SECONDS = 0.7;
+export const OPEN_SECONDS = 1.5;
 
 /**
- * Leg 3: the doors swing the rest of the way, and the whole of the second scroll.
+ * How long the closing hole outlives the opening aperture, as a fraction of the path.
  *
- * A leg of the same path as the two above rather than a move of its own — one
- * number, one tween, no two owners of the same property — but cued *separately*,
- * because it is the second gesture and not a continuation of the first (see
- * `openCueAt` in ./sequence).
+ * The two legs used to be sequential — hole shut, *then* panels move — and that left a
+ * beat of blank orange in the middle of the opening that had nothing in it at all. The
+ * cause is that the panels are wider than half the screen each, so they go on
+ * overlapping for the first 41% of their travel (see DOOR_SEALED_AT) and the aperture
+ * does not appear until then. Sequential legs therefore mean: hole gone at 28% of the
+ * path, gap appears at 58%, and 0.44s of solid orange between them.
  *
- * 0.9s for the remaining 0.58 of the travel, against 0.7s for the first 0.42: a
- * shade slower per unit of ground than the crack, so the doors ease open rather
- * than snapping the moment they are released.
+ * So they overlap instead. The panels now travel across the whole path and the hole
+ * closes across the fraction of it that ends where the aperture opens — which costs
+ * nothing, because a panel sliding while still overlapped is invisible, and it is the
+ * same footage on both sides of the hand-over. This is the small overlap on top of that,
+ * so rounding can never put a bare frame between the hole's last pixel and the gap's
+ * first: for a moment the shrinking hole sits over the widening gap, both showing the
+ * footage, and the eye reads one continuous opening.
+ *
+ * The seal's end is *solved* from DOOR_SEALED_AT and the leg's ease rather than written
+ * down (see APERTURE_AT in ./sequence), so retuning either cannot silently reopen the
+ * gap this closes.
  */
-export const OPEN_SECONDS = 0.9;
-
-/** The three resting points of the cued opening, as positions along it. */
-export const STOP_SHUT = 0;
-export const STOP_AJAR = SEAL_SECONDS + AJAR_SECONDS;
-export const STOP_OPEN = STOP_AJAR + OPEN_SECONDS;
+export const SEAL_OVERSHOOT = 0.06;
 /**
- * Travelling back is quicker, for the same reason the gray wash's reverse is:
- * going back up, the visitor has already seen the beat and is looking for what
- * was before it.
+ * Travelling back is *slower*, and this is the second reverse in the file that wants
+ * stretching rather than shortening (see CLOSE_REVERSE_SPEED for the other).
+ *
+ * It was 1.5× quicker, on the usual reasoning that a beat already watched should not be
+ * sat through twice. That reasoning does not hold here, because coming back up this beat
+ * has not been watched — it has been watched *forwards*. Backwards it is a different
+ * thing to look at: the doors swing shut and the footage grows back out of the seam, and
+ * a reader scrolling up out of "growth creates a gap" is looking straight at it.
+ *
+ * At 1.5× the whole return played in 1.0s, and the visible part of it is shorter still —
+ * the panels only separate above 41% of the path, so the doors' travel and the hole's
+ * reopening share that second between them. Under an ordinary upward scroll the ceiling
+ * in paintStage then took over and dragged the rest through at the reader's speed, and
+ * what arrived was the video simply *there*, on orange, with no closing and no growth.
+ * 0.8 makes the return 1.9s, which is slower than the opening and deliberately so: it
+ * also keeps the clock ahead of the ceiling up to ~40vh/s of upward scroll, so the move
+ * is a move rather than a scrub for anyone reading rather than fleeing.
  */
-export const OPENING_REVERSE_SPEED = 1.5;
-
-/**
- * Where the doors' full open is cued — the *earliest* mark, not the mark.
- *
- * The real one is OPEN_CUE_GAP_VH past wherever the crack actually landed, and this
- * is only the floor under it, for a pass gentle enough that the crack lands before
- * 6vh. A fixed mark alone cannot do the job: the crack is on a clock and this is on
- * scroll, so one firm gesture reaches any fixed vh long before a 1.6s move has
- * finished, and the doors would swing while the hole was still closing.
- *
- * The lead line of the gap copy is not played *over* this leg — it *is* this leg
- * (see leadSeat), growing out of the point the panels part from and reaching full
- * size exactly as they stop.
- *
- * Because the leg is cued it costs no scroll, and everything below is written
- * against this mark rather than against a 70vh window past it — which is where the
- * section's ~78vh came off. A dynamic mark still means a dynamic rest, though, so a
- * flick that lands the crack late pushes the doors' stop past any exit ramp written
- * in absolute vh. The copy sequence therefore measures from where the doors
- * *actually* stopped (see COPY_SQUEEZE_MAX).
- */
-export const DOOR_OPEN_AT = SEAL_AT + 6;
+export const OPEN_REVERSE_SPEED = 0.8;
 
 /**
- * How much scroll past the crack's landing the full open waits for.
+ * The scroll floor under that move, and the reason a clock is affordable here at all.
  *
- * The one number deciding whether the doors park at the crack at all, so it is
- * sized against the gesture and nothing else: a wheel notch is ~11vh, so 8 is
- * crossed by the *next* notch and not by the residue of the one that cracked them —
- * that notch has already settled by the time the 1.6s move lands, smoothing and
- * scrub lag included. Raise it and a second scroll stops being enough; lower it and
- * the first one's tail finishes the job on its own.
+ * A cue costs no *designed* scroll but consumes real scroll, because the reader keeps
+ * moving while it plays — so it lands wherever their speed happens to carry them, and
+ * everything measured from that landing inherits their speed. That is what put the gap
+ * copy at 1.3× / 2.7× / 3.3× and, past the cap on it, started the copy before the doors
+ * had stopped. The whole fault was the *unbounded* landing.
+ *
+ * So the move is allowed to run ahead of the scroll and never behind it:
+ *
+ *     pathP = max(cued, ramp(vh, OPEN_SPAN))
+ *
+ * Below about 35vh/s the clock is ahead and the reader gets the full 1.5s, one gesture,
+ * however small. Above it the floor takes over and the opening finishes in whatever
+ * scroll is left of this span — quicker, but still one continuous eased move, and
+ * bounded. Either way the doors are open by DOOR_OPEN_AT, so that is a fixed mark again
+ * and every beat below it is a fixed number, exactly as when the whole opening was
+ * scrubbed. Nothing downstream can be compressed, reordered or skipped.
+ *
+ * 74vh, up from 52, because 52 put the crossover at ~35vh/s — an ordinary firm scroll —
+ * and past it the floor drags the doors through the rest of their travel at the reader's
+ * speed, which is the "sometimes it snaps open" case. The same number bounds the reverse,
+ * so it fixes the mirrored complaint on the way back up at the same time. It is where the
+ * two costs cross. Longer, and the clock governs for faster readers
+ * but LEAD_HOLD_VH has to carry more slack for the reader who opens the doors in one
+ * notch at 11vh and then has to reach the copy. Shorter, and the floor binds at
+ * ordinary reading speeds and the timing stops being a timing.
  */
-export const OPEN_CUE_GAP_VH = 8;
+export const OPEN_VH = 74;
+export const DOOR_OPEN_AT = SEAL_AT + OPEN_VH;
+export const OPEN_SPAN = [SEAL_AT, DOOR_OPEN_AT] as const;
 
-/** The doors stand at rest for a beat before the lead line begins to leave. */
-export const LEAD_HOLD_VH = 20;
+/**
+ * The doors stand at rest for a beat before the lead line begins to leave.
+ *
+ * 12 rather than 20 because the real hold is longer than this number for everyone
+ * except the fastest readers. DOOR_OPEN_AT is the *latest* the doors can land (see
+ * OPEN_VH), and one wheel notch lands them at ~11vh, so that reader holds the line for
+ * ~54vh rather than 12. The slack has to sit somewhere and this is the right place for
+ * it: a held full-size line of copy is something to read, where the same slack at the
+ * end of the section would be a screen of flat gray.
+ */
+export const LEAD_HOLD_VH = 12;
 
 /**
  * The copy after the doors. The lead line arrives *with* them and is already seated
@@ -214,32 +260,18 @@ export const COPY_HOLD_VH = 8;
 export const COPY_OUT_VH = 30;
 
 /**
- * The lead line's exit, once the doors have stood at rest for a beat — and the
- * copy sequence's nominal origin, which is where it begins for anyone whose doors
- * came to rest at DOOR_OPEN_AT rather than somewhere past it.
+ * The lead line's exit, once the doors have stood at rest for a beat — and the copy
+ * sequence's origin, which is now simply a number rather than something measured per
+ * pass.
+ *
+ * The line must not begin to leave until the doors are at rest: it is still growing out
+ * of the aperture until then, and the two are one gesture. That is guaranteed by
+ * construction here, because the doors' rest is a fixed mark on the same clock this is
+ * on (see DOOR_OPEN_AT). It used to be keyed to where they *actually* stopped, which
+ * moved with scroll speed, and the arithmetic that tried to fit a full-length copy into
+ * whatever scroll was left is what came out with the cues.
  */
 export const LEAD_OUT_AT = DOOR_OPEN_AT + LEAD_HOLD_VH;
-
-/**
- * How far the copy sequence may be squeezed when it starts late.
- *
- * The lead line must not begin to leave until the doors are at rest — it is still
- * growing out of the aperture until then, and the two are one gesture — so its exit
- * is keyed to where they *actually* stopped, which differs whenever a flick carried
- * the cued legs a long way past their marks.
- *
- * Sliding the sequence back wholesale would push its tail off the end of the pin,
- * since PIN_VH is fixed at mount. So it is squeezed instead: the start moves,
- * COPY_END stays put, and every downstream beat is untouched at any scroll speed.
- * In the ordinary case the factor is 1 and nothing happens at all.
- *
- * The cap holds the invariant for doors landing as late as ~130vh, well past any
- * real gesture. Beyond that the sequence keeps its length and overlaps the tail of
- * the opening, which is harmless: the lead line's growth is carried through its exit
- * rather than discarded at it (see leadSeat), so an early exit is continuous, just
- * early.
- */
-export const COPY_SQUEEZE_MAX = 0.7;
 
 /**
  * Each line rises as the one before it is halfway out — the overlap is what makes
@@ -308,11 +340,11 @@ export const COPY_END = LAST_LINE.out[1];
  * and faint and plainly on its way out, while still visibly moving — which is the
  * beat asked for: the wave starts *as the line leaves*, not as it sits.
  *
- * Measured against the copy's own clock and not raw scroll — see `copyVh` in
- * ./sequence. The two are the same only when the doors happen to stop at their
- * nominal mark; every other pass squeezes the copy into a shorter run of scroll, and
- * a band cued in raw vh slid earlier against the line by however much. That is why
- * this looked like a different beat on different scrolls.
+ * Measured in the same raw vh the copy is, which used not to be true and is the other
+ * half of why this looked like a different beat on different scrolls: the copy ran on a
+ * squeezed clock of its own, so a band cued in raw vh slid earlier against the line by
+ * however much that pass had squeezed. There is one clock now (see DOOR_OPEN_AT), so
+ * the overlap tuned here is the overlap at every scroll speed.
  *
  * The cost is the case that separation was for — scrolling back *up*, the ribbon's
  * 0.5s close now runs against the last line returning rather than after it. They are
@@ -341,15 +373,30 @@ export const BAND_DRAW_AT = LAST_LINE.out[0] + COPY_OUT_VH * BAND_OVERLAP;
  * Selected by the direction of travel, not by whether the ribbon is currently shown
  * (see the `scrollDir` ternary in paintStage). A release mark above a commit mark is
  * the inverse of hysteresis and oscillates if it is latched on state; direction is the
- * one input that is stable while the scroll is stopped. Going down, `copyVh` passes
+ * one input that is stable while the scroll is stopped. Going down, the scroll passes
  * BAND_DRAW_AT and this never comes into it, so the downward beat is untouched.
  */
-const BAND_UP_LEAD_VH = 12;
+const BAND_UP_LEAD_VH = 24;
 export const BAND_UNDRAW_AT = LAST_LINE.out[1] + BAND_UP_LEAD_VH;
 const BAND_HOLD_VH = 60;
 export const BAND_CLOSE_AT = BAND_DRAW_AT + BAND_HOLD_VH;
 export const BAND_DRAW_SECONDS = 0.9;
 export const BAND_HIDE_SECONDS = 0.5;
+
+/**
+ * How much quicker the ribbon travels backwards along its sweep (see bandClip).
+ *
+ * The same reasoning as OPENING_REVERSE_SPEED and the gray wash's: going back up the
+ * visitor has already seen the beat and is looking for what was before it. Here it also
+ * settles a measured collision. Retreating the way it came is *correct* where the old
+ * three-state version wrongly sent a reversed ribbon out of the opposite side, and it is
+ * slower — 0.9s against 0.5s — so it ran further into the last line of copy coming back
+ * into its seat. 2.5 with BAND_UP_LEAD_VH at 24 keeps the two apart up to 90vh/s of
+ * upward scroll, against 25vh/s before either existed.
+ *
+ * In family with the wash, which reverses at 1.3 / 0.55 ≈ 2.4× for the same reason.
+ */
+export const BAND_REVERSE_SPEED = 2.5;
 
 /**
  * The closing line takes the space the ribbon just vacated — and starts taking it on
@@ -374,20 +421,42 @@ export const BAND_HIDE_SECONDS = 0.5;
  */
 export const LEAP_AT = BAND_CLOSE_AT;
 export const LEAP_IN_VH = 32;
+
+/**
+ * How much of the wave has to be gone before the closing line may take the seat, as a
+ * span over "fraction of the ribbon cleared" rather than over scroll.
+ *
+ * The paragraph above holds at a reading pace and comes apart at speed: 32vh is 0.36s
+ * at 90vh/s, so the line was fully seated while the 0.5s close was still running
+ * through the same space. The two clocks lean the right way only while the scroll is
+ * the slower of them, and nothing guarantees that.
+ *
+ * So the arrival is capped by the wave's own progress as well (see `bandClear` in
+ * ./sequence), and this is the shape of that cap. A span and not a plain `1 - vis`
+ * because they share one seat: a line at half strength under a wave that is half gone
+ * is still two things in the same place. Shut until the ribbon is 55% cleared, fully
+ * open at 90%, and the last 10% is left to the line's own ease so the two are never
+ * both moving hard at once.
+ */
+export const BAND_CLEAR_AT = [0.55, 0.9] as const;
 const LEAP_HOLD_VH = 38;
 
 /**
- * The doors close as soon as the line has finished holding — and, like the opening,
- * in one go.
+ * The doors close as soon as the line has finished holding, and in one go.
  *
  * (cue) Crossing DOOR_CLOSE_AT fires a timed tween over the close's own progress,
  * so the whole return is one move at one speed whatever the wheel was doing, and no
- * stopping place can leave the stage with a gap frozen half shut. It used to be the
- * one scrubbed part of the doors' travel, on the reasoning that the close is the
- * section handing itself back rather than a beat of its own — but 125vh is five or
- * six notches to shut a door the reader has already finished with, and the shut
- * doors are the gate to the next section, so grinding them closed holds up
- * everything behind them.
+ * stopping place can leave the stage with a gap frozen half shut. It was scrubbed
+ * across 125vh once, on the reasoning that the close is the section handing itself
+ * back rather than a beat of its own — but that is five or six notches to shut a door
+ * the reader has already finished with, and the shut doors are the gate to the next
+ * section, so grinding them closed holds up everything behind them.
+ *
+ * The *opening* is scrubbed and this is not, which looks like an inconsistency and is
+ * the rule stated at the top of this file: a cue lands at a mark that moves with scroll
+ * speed, which is ruinous where a sequence is measured from it and free at the end of
+ * the section, where the only thing downstream is a wash riding this tween's own
+ * progress. The asymmetry is the point rather than a leftover.
  *
  * The panels still retrace their opening exactly: `doorNow` is the opening's own
  * progress scaled back to zero (see paintStage), and only the clock under that
@@ -406,8 +475,52 @@ const LEAP_HOLD_VH = 38;
  * watched to the end is worse than a screen of gray at the end of it.
  */
 export const DOOR_CLOSE_AT = LEAP_AT + LEAP_IN_VH + LEAP_HOLD_VH;
-export const CLOSE_SECONDS = 0.95;
 /**
+ * 1.15 rather than 0.95, and the guard under it (DOOR_CLOSE_VH) raised to match.
+ *
+ * Only 72% of this is ever watched — the panels cover the screen at CLOSE_SEALED_P and
+ * every frame after that is the same flat rectangle — so the move the reader actually
+ * sees is 0.72s of it, against 0.6s before. The extra is small on purpose: the fault
+ * this addresses was never mostly the duration, it was that the window had shrunk below
+ * it (see DOOR_CLOSE_VH), and a close long enough to be unmistakable at 4vh of pin would
+ * have been a slow one at 20.
+ */
+export const CLOSE_SECONDS = 1.15;
+
+/**
+ * How much slower the close runs *backwards*, when the reader comes up out of
+ * DefinitionSection and the doors part again.
+ *
+ * Below 1 where every other reverse in this file is above it, and for a reason that is
+ * the opposite of theirs. The others are beats the visitor has already watched, so
+ * hurrying back past them is right. This one they have *not* watched: coming up from the
+ * footer the stage is a flat gray screen, the boundary is crossed at whatever speed the
+ * next section was scrolled at, and 31vh of guard is gone in a frame or two — so the
+ * doors' entire re-opening is the first thing on screen and it arrives at full speed
+ * from a standstill. At 0.95s it read as sudden. 1.5s is the same length as the
+ * opening's own cue, which is what it is a reverse of.
+ */
+export const CLOSE_REVERSE_SPEED = 0.63;
+/**
+ * Pinned scroll held over the close — and now only a token amount of it.
+ *
+ * This and GRAY_TAIL_VH are the whole of what separates the doors meeting from the pin
+ * letting go, and every vh of it is a screen the next section cannot be seen through.
+ * The stage is pinned, which is `position: fixed` over the whole viewport, and with
+ * `pinSpacing: false` DefinitionSection's top edge clears the bottom of the screen at
+ * exactly PIN_VH — so *any* tail here is flat gray with the statement stuck below the
+ * fold, whatever that section does. Cueing the statement earlier cannot help; there is
+ * nowhere for it to be drawn.
+ *
+ * So the guard is spent rather than kept: 21vh between the two has come down to 5. The
+ * close is cued and finishes on its own clock, so it plays out as the boundary crosses
+ * rather than being cut off, and it is not exposed by that — DefinitionSection's veil is
+ * the same gray and is fully opaque before the crossing begins (see VEIL_VH). What the
+ * reader sees is the panels meeting, the orange turning over, and the statement already
+ * rising into the gray, with no held frame anywhere between them.
+ *
+ * The note this replaces:
+ *
  * Sized against the *visible* part of the close, and nothing more.
  *
  * The panels cover the screen at CLOSE_SEALED_P — 72% in, about 0.68s — and every
@@ -423,7 +536,7 @@ export const CLOSE_SECONDS = 0.95;
  * guard without the close and an ordinary scroll unpins while the doors are still
  * visibly travelling.
  */
-export const DOOR_CLOSE_VH = 17;
+export const DOOR_CLOSE_VH = 4;
 
 /**
  * How far through the close the panels meet and the stage reads as one unbroken
@@ -455,7 +568,7 @@ export const CLOSE_SEALED_P = 1 - DOOR_SEALED_AT;
  * across this same stretch.
  */
 export const GRAY_SECONDS = 1.3;
-export const GRAY_HIDE_SECONDS = 0.55;
+export const GRAY_HIDE_SECONDS = 0.8;
 
 /**
  * Pinned scroll left once the close has had its guard — the whole of what remains,
@@ -476,7 +589,7 @@ export const GRAY_HIDE_SECONDS = 0.55;
  * wash is cued on, and the veil loses the window it needs to commit before the
  * crossing.
  */
-const GRAY_TAIL_VH = 4;
+const GRAY_TAIL_VH = 1;
 
 /**
  * The pin plus the viewport the pinned stage occupies: the pin runs `top top` →
@@ -498,6 +611,16 @@ export const SECTION_VH = PIN_VH + 100;
  * way, and the two never have to agree on a number by hand.
  */
 export const HERO_GRAY_TAIL_VH = GRAY_TAIL_VH;
+
+/**
+ * The other hand-off: pinned scroll left from the instant the doors begin to close.
+ *
+ * DefinitionSection's statement is cued off this rather than off the pin's end, so it is
+ * already rising while the panels are still shutting and the orange is washing to gray.
+ * Cued off the end, it started ~31vh later — the whole of the close's guard — and that
+ * gap is a screen of flat gray with nothing in it, which is what it is here to remove.
+ */
+export const HERO_CLOSE_TAIL_VH = PIN_VH - DOOR_CLOSE_AT;
 
 /** 0 before the span, 1 after it, linear in between. */
 export const ramp = (p: number, [from, to]: readonly [number, number]) =>

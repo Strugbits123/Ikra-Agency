@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { gsap, ScrollTrigger } from "@/lib/gsap";
 import { useRevealOnView } from "@/lib/useRevealOnView";
-import { HERO_GRAY_TAIL_VH } from "./HeroNarrative";
+import { HERO_CLOSE_TAIL_VH, HERO_GRAY_TAIL_VH } from "./HeroNarrative";
 import Logo from "./Logo";
 
 function RevealBlock({
@@ -57,11 +57,13 @@ const STATEMENT_VH = 50;
  * faded, plainly waiting for more input. On a gray screen with nothing else on it,
  * that is the one place a half-finished pose has nowhere to hide.
  *
- * So it is a *cue* now, matching the hero it arrives out of: everything the hero
- * does on this hand-off is one timed move at one speed (its doors, its wash), and
- * the text is the third of them. Crossing STATEMENT_REVEAL_AT_PCT fires
- * STATEMENT_REVEAL_SECONDS of rise and fade that runs to completion whether or not
- * the reader keeps scrolling.
+ * So it is a *travel* now rather than a reveal, and scrubbed rather than cued. It was a
+ * cue for a while, matching the hero's own hand-off moves, and that was wrong for one
+ * reason: a cue resolves the paragraph wherever it happens to be, and where it happens
+ * to be is ~20vh below its section's top edge — which itself only clears the bottom of
+ * the screen as the hero unpins. So it faded in perfectly, below the fold, and the
+ * reader had to scroll again to reach it. It has to stay level with an edge that is
+ * moving, which is a job for scroll position and not for a clock.
  *
  * That mark sits *behind* the viewport's bottom edge, halfway through the hero's gray
  * tail, and being behind it is the whole point. It used to be 98 — the section's top
@@ -85,15 +87,37 @@ const STATEMENT_VH = 50;
  * The move itself is unchanged from the RevealBlock it began as: 32px of rise and an
  * opacity out of an `ease-out`. Only its clock has changed, twice.
  */
-const STATEMENT_REVEAL_RISE_PX = 32;
-const STATEMENT_REVEAL_AT_PCT = 100 + HERO_GRAY_TAIL_VH;
-const STATEMENT_REVEAL_SECONDS = 0.9;
+// Negative: the paragraph starts *above* its resting place, not below it, and that sign
+// is the fix rather than the size. It sits ~20vh below its section's top edge, and that
+// edge only clears the bottom of the screen as the hero unpins — so starting it low put
+// it further off screen still, and every version of "rise into place" made the reader
+// scroll further to find it. Starting it high puts it on screen the moment the edge
+// arrives; the page then carries it up faster than this settles it down, so the net
+// travel is still upward, just gentle. That is what "already coming from the bottom"
+// has to mean when the thing it is arriving over is a pinned, full-viewport stage.
+//
+// A fraction of the viewport, not a fixed 32px, and the difference is the whole point.
+// The paragraph sits ~20vh below its section's top edge, and that edge only clears the
+// bottom of the screen when the hero unpins — so a 32px rise resolved it *in place*,
+// still below the fold, and the reader had to scroll again to reach it. Lifting it by a
+// real slice of the viewport brings it up into view as the edge arrives instead: it
+// travels up while the page does, and lands as the gray settles.
+const STATEMENT_LIFT_VH = 0.4;
+// Fires the instant the hero's doors begin to close, not once its pin lets go — so the
+// text is already on its way up while the panels are still shutting and the orange is
+// turning over to gray. Off the pin's end it began ~31vh later, and that gap is exactly
+// the screen of flat gray this is here to prevent.
+const STATEMENT_REVEAL_AT_PCT = 120;
+// Scrubbed across the section's arrival rather than cued, because what it is doing now
+// is travel rather than a reveal — it has to stay level with the edge coming up, and a
+// timed move cannot. Position-mapped, so a fast scroll gets the same journey, faster.
+const STATEMENT_LIFT_END_PCT = 60;
 
 // The round window opens until it covers the frame, and the photo inside
 // dissolves across the second half of that — derived from the growth rather than
 // stated separately, so "starts at the halfway point" cannot drift.
 const GROW_AT = 20;
-const GROW_VH = 100;
+const GROW_VH = 50;
 const FADE_AT = GROW_AT + GROW_VH / 2;
 const FADE_VH = GROW_VH / 2;
 
@@ -132,7 +156,7 @@ const FADE_VH = GROW_VH / 2;
  * screen and so crosses the wordmark soonest.
  */
 const DICT_AT = STATEMENT_VH;
-const DICT_VH = 170;
+const DICT_VH = 90;
 
 // The wordmark's slide out of the centre and over to the left. It has no cue of
 // its own — the move is a response to the definition arriving alongside it, so
@@ -1037,12 +1061,13 @@ export default function DefinitionSection() {
       // It is aligned to a measured centre, so it must be re-placed after any
       // re-measure, not just on scroll. transformOrigin is the layer's top-left,
       // set once, so the translate positions that exact corner.
-      gsap.set(photoRef.current, { transformOrigin: "0 0" });
+      gsap.set(photoRef.current, { transformOrigin: "0 0", force3D: true });
       const placePhoto = (s: number) => {
         gsap.set(photoRef.current, {
           x: m.baseSize / 2 - m.cx / s,
           y: m.baseSize / 2 - m.cy / s,
           scale: 1 / s,
+          force3D: true,
         });
       };
       placePhoto(1);
@@ -1104,7 +1129,7 @@ export default function DefinitionSection() {
         // One set, not two: a second gsap.set on the same element would rewrite
         // the whole transform and drop the scale.
         const scale = 1 + (maxScale - 1) * growP;
-        gsap.set(circle, { scale, opacity: 1 - fadeP });
+        gsap.set(circle, { scale, opacity: 1 - fadeP, force3D: true });
 
         // ...and the photo counter-scaled by exactly the inverse, so the window
         // opens over a photo that holds still. Without this the circle's scale
@@ -1478,53 +1503,33 @@ export default function DefinitionSection() {
        * latched call, and the ease stays in `paintStatement` with the tween linear —
        * putting it on the tween as well would apply it twice.
        */
-      const reveal = { p: 0 };
-      let revealShown = false;
-      let revealTween: gsap.core.Tween | null = null;
       const paintStatement = (progress: number) => {
         const p = STATEMENT_REVEAL_EASE(gsap.utils.clamp(0, 1, progress));
         gsap.set(statementRevealRef.current, {
-          y: (1 - p) * STATEMENT_REVEAL_RISE_PX,
+          y: -(1 - p) * STATEMENT_LIFT_VH * window.innerHeight,
           opacity: p,
-        });
-      };
-      const showStatement = (show: boolean) => {
-        if (show === revealShown) return;
-        revealShown = show;
-        const to = show ? 1 : 0;
-        revealTween?.kill();
-        revealTween = gsap.to(reveal, {
-          p: to,
-          // Proportional to the ground left, so a reversal crossed mid-flight runs
-          // back at the rate it came in at.
-          duration: STATEMENT_REVEAL_SECONDS * Math.abs(to - reveal.p),
-          ease: "none",
-          onUpdate: () => paintStatement(reveal.p),
-          overwrite: "auto",
         });
       };
       const statementTrigger = ScrollTrigger.create({
         trigger: section,
         start: `top ${STATEMENT_REVEAL_AT_PCT}%`,
-        end: "bottom top",
-        onToggle: (self) => showStatement(self.isActive),
+        end: `top ${STATEMENT_LIFT_END_PCT}%`,
+        scrub: 1,
+        onUpdate: (self) => paintStatement(self.progress),
+        onLeave: () => paintStatement(1),
+        onLeaveBack: () => paintStatement(0),
       });
-      // The resting state for a restored scroll position, set flat rather than
-      // played: creating the trigger can itself fire onToggle, and a page opening
-      // halfway down should not animate a paragraph that is already meant to be
-      // there.
-      gsap.killTweensOf(reveal);
-      revealShown = statementTrigger.isActive;
-      reveal.p = revealShown ? 1 : 0;
-      paintStatement(reveal.p);
+      // The resting state for a restored scroll position. `scrub` does not paint until
+      // the reader moves, so a page opening halfway down would leave the paragraph at
+      // its inline start state — a third of a viewport low and transparent — until the
+      // first scroll event arrived.
+      paintStatement(statementTrigger.progress);
 
       return () => {
         cancelled = true;
         sizeObserver.disconnect();
-        // Created inside runTail and inside showStatement, so the context never
-        // collected either.
+        // Created inside runTail, so the context never collected it.
         tailTween?.kill();
-        revealTween?.kill();
         trigger.kill();
         veilTrigger.kill();
         statementTrigger.kill();
@@ -1634,7 +1639,7 @@ export default function DefinitionSection() {
                     ? undefined
                     : {
                       opacity: 0,
-                      transform: `translateY(${STATEMENT_REVEAL_RISE_PX}px)`,
+                      transform: `translateY(${-STATEMENT_LIFT_VH * 100}vh)`,
                     }
                 }
               >
@@ -1690,6 +1695,7 @@ export default function DefinitionSection() {
                     to simply filling the circle. */}
                 <div
                   ref={photoRef}
+                  style={{ willChange: "transform" }}
                   className={
                     reducedMotion
                       ? "absolute inset-0"
@@ -1702,7 +1708,9 @@ export default function DefinitionSection() {
                     loop
                     muted
                     playsInline
-                    className="h-full w-full object-cover"
+                    preload="auto"
+                    style={{ transform: "translateZ(0)", willChange: "transform" }}
+                    className="h-full w-full object-cover pointer-events-none"
                   />
                 </div>
               </div>
@@ -1737,16 +1745,23 @@ export default function DefinitionSection() {
             {!reducedMotion && (
               <div
                 ref={dictionaryRef}
-                className="pointer-events-none absolute inset-x-14 top-0 md:inset-x-auto md:right-36 md:w-[42%] md:max-w-140"
+                className="pointer-events-none absolute top-0 hidden md:block md:right-36 md:w-[42%] md:max-w-140"
               >
                 {DICTIONARY_CONTENT}
               </div>
             )}
           </div>
 
-          {/* Reduced motion only: nothing pins or fades, so the definition
-              follows the composition in normal flow, above the footer. There must
-              only ever be one of these, since both carry `dictionaryRef`. */}
+          {/* Mobile screens (< md): display definition in natural flow to avoid logo overlap */}
+          {!reducedMotion && (
+            <div className="block px-8 py-12 md:hidden">
+              <RevealBlock className="max-w-md">
+                {DICTIONARY_CONTENT}
+              </RevealBlock>
+            </div>
+          )}
+
+          {/* Reduced motion: follows the composition in normal flow */}
           {reducedMotion && (
             <div className="px-14 pb-24 md:px-36">
               <RevealBlock className="max-w-md">

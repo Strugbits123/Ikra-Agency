@@ -8,13 +8,26 @@ import { DOOR_PANEL_W, DOOR_REST_X, DOOR_REST_Y } from "./doors";
  */
 
 /**
- * The ribbon draws in and closes in the same direction, right-to-left, which
- * pinches the clip at opposite ends — so a closed ribbon is parked at the wrong
- * end to open from and has to be moved back first (see `drawBand`).
+ * The ribbon draws in and closes in the same direction, right-to-left, so its whole
+ * life is one sweep of a single wipe position: −1 undrawn (pinched at the right), 0
+ * fully drawn, +1 closed (pinched at the left).
+ *
+ * One number rather than three named states, and that is what makes the wave
+ * interruptible without a glitch. As three states it was three tweens between fixed
+ * clip strings, and a scroll fast enough to cross the draw and close marks inside the
+ * draw's own 0.9s killed a half-drawn wave and sent it to the *opposite* pinch — so it
+ * jumped across the screen instead of carrying on. Along one axis there is nothing to
+ * jump to: a target crossed mid-flight just retargets the sweep, and the wave keeps
+ * travelling the way it was already going, faster.
  */
-export const BAND_CLIP_UNDRAWN = "inset(0% 0% 0% 100%)";
-export const BAND_CLIP_FULL = "inset(0% 0% 0% 0%)";
-export const BAND_CLIP_CLOSED = "inset(0% 100% 0% 0%)";
+export const bandClip = (w: number) =>
+  `inset(0% ${(Math.max(0, w) * 100).toFixed(3)}% 0% ${(Math.max(0, -w) * 100).toFixed(3)}%)`;
+
+export const BAND_UNDRAWN = -1;
+export const BAND_FULL = 0;
+export const BAND_CLOSED = 1;
+/** The markup's starting state, so the ribbon is not painted before it is cued. */
+export const BAND_CLIP_UNDRAWN = bandClip(BAND_UNDRAWN);
 
 /** Gap between the ribbon's box and the closing line beneath it, in px. */
 export const LEAP_GAP = 56;

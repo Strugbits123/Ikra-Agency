@@ -46,10 +46,10 @@ export const STACK_OUT = gsap.parseEase("sine.inOut");
  * point, so without this it arrives as a speck on the orange; a fade across the
  * first slice of the growth resolves it out of the surface instead.
  *
- * Sized in growth and not in scroll, which is what has kept it right through the
- * opening becoming fully cued: the doors carry the line the whole way now, and 0.18
- * of the growth is very nearly the whole of the crack (see DOOR_AJAR), so the line
- * resolves out of the orange on the first scroll and does its growing on the second.
+ * Sized in growth and not in scroll, which is what has kept it right through the opening
+ * being rewritten three times — onto its own clock, back off it, and then from two legs
+ * with a resting place between them to one continuous move. The doors carry the line the
+ * whole way in every version, so 0.18 of *their* travel is all this ever has to mean.
  */
 const GROW_FADE = 0.18;
 
@@ -93,9 +93,10 @@ export function stackSeat(viewportH: number, inP: number, outP: number) {
  * `growP` multiplies into that exit rather than being dropped at it. Handing
  * straight to `stackSeat(viewportH, 1, outP)` asserts the line is fully grown, so
  * an early exit snapped it to full size in one frame and climbed away, appearing to
- * burst out of a gap that was still opening. The copy's origin makes that almost
- * unreachable (see COPY_SQUEEZE_MAX); this is the backstop, at the cost of a
- * multiply by 1.
+ * burst out of a gap that was still opening. That is unreachable now — the exit's
+ * window opens strictly after the doors' last leg closes, on the same clock (see
+ * LEAD_OUT_AT), where it used to be an origin measured per pass that could be forced
+ * to overlap them. Kept as the backstop, at the cost of a multiply by 1.
  */
 export function leadSeat(viewportH: number, growP: number, outP: number) {
   if (outP > 0) {
