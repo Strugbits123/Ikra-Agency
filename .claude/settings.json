@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/dell/AppData/Local/Temp/claude/g--strugbits-Ikra/**)",
+      "Read(//c/Users/dell/AppData/Local/Temp/claude/**)",
+      "Bash(*)",
+      "Bash(echo \"TSC_EXIT=$?\")",
+      "Bash(curl -s http://localhost:3000/ -o baseline-raw.html)",
+      "Bash(node -e ' *)",
+      "Bash(node snap.mjs before.html)",
+      "Bash(node snap.mjs before2.html)",
+      "Bash(node snap.mjs after.html)",
+      "Bash(node snap.mjs rm-before.html)",
+      "Bash(set -e)",
+      "Bash(cp __TRACKED_VAR__/new-DefinitionSection.tsx components/DefinitionSection.tsx)",
+      "Bash(cp __TRACKED_VAR__/new-HeroNarrative.tsx components/HeroNarrative.tsx)",
+      "Bash(sed -i 's/useState\\(false\\);/useState\\(true\\);/' components/DefinitionSection.tsx)",
+      "Bash(node snap.mjs rm-after.html)",
+      "Bash(sed -i 's/useState\\(true\\);/useState\\(false\\);/' components/DefinitionSection.tsx)",
+      "Bash(node snap.mjs final.html)"
+    ]
+  }
+}

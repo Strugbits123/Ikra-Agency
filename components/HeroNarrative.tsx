@@ -17,10 +17,6 @@ import { playHeroIntro } from "./hero/intro";
 import { createHeroSequence } from "./hero/sequence";
 import { SECTION_VH } from "./hero/timeline";
 
-// Re-exported because DefinitionSection has always imported it from this module,
-// and it is this section's hand-off to publish (see ./hero/timeline).
-export { HERO_CLOSE_TAIL_VH, HERO_GRAY_TAIL_VH } from "./hero/timeline";
-
 /**
  * One continuous pinned sequence, assembled from four parts:
  *
