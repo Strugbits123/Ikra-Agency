@@ -62,13 +62,20 @@ const FOOTER_COLUMNS = [
  */
 export default function SiteFooter({
   footerRef,
-  revealRefs,
-  slotRefs,
+  registerReveal,
+  registerSlot,
   reducedMotion,
 }: {
   footerRef: RefObject<HTMLDivElement | null>;
-  revealRefs: RefObject<(HTMLDivElement | null)[]>;
-  slotRefs: RefObject<(HTMLSpanElement | null)[]>;
+  /**
+   * Callbacks rather than the ref arrays themselves, so the writes happen in the
+   * owner's scope. Handing the arrays down and assigning into them here is a
+   * component mutating its own props, which is what `react-hooks/immutability`
+   * objects to — and it is right to: the rows are this component's business, but the
+   * arrays the sequence reads are not.
+   */
+  registerReveal: (index: number, el: HTMLDivElement | null) => void;
+  registerSlot: (index: number, el: HTMLSpanElement | null) => void;
   reducedMotion: boolean;
 }) {
   return (
@@ -87,9 +94,7 @@ export default function SiteFooter({
                the footer is simply part of the page. */
             <div
               key={col.heading}
-              ref={(el) => {
-                revealRefs.current[i] = el;
-              }}
+              ref={(el) => registerReveal(i, el)}
               style={reducedMotion ? undefined : { opacity: 0 }}
             >
               {/* The landing pad, not the dot. It reserves the space and
@@ -98,9 +103,7 @@ export default function SiteFooter({
                   Under reduced motion nothing falls, so it is the dot. */}
               <span
                 aria-hidden
-                ref={(el) => {
-                  slotRefs.current[i] = el;
-                }}
+                ref={(el) => registerSlot(i, el)}
                 className={`block rounded-full ${reducedMotion ? "bg-accent" : ""}`}
                 style={{
                   width: FOOTER_DOT_SIZE,
@@ -127,9 +130,7 @@ export default function SiteFooter({
             the full height of the frame and this would only be clipped
             off the bottom by the camera's own clamp. */}
         <div
-          ref={(el) => {
-            revealRefs.current[FOOTER_COLUMNS.length] = el;
-          }}
+          ref={(el) => registerReveal(FOOTER_COLUMNS.length, el)}
           style={reducedMotion ? undefined : { opacity: 0 }}
           className="mt-12 hidden border-t border-ink/15 pt-5 text-sm font-light text-ink/55 md:flex md:items-center md:justify-between"
         >

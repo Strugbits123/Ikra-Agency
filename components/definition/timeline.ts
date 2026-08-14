@@ -1,5 +1,5 @@
 import { gsap } from "@/lib/gsap";
-import { HERO_GRAY_TAIL_VH } from "../hero/timeline";
+import { CLOSE_VH, HERO_GRAY_TAIL_VH } from "../hero/timeline";
 
 /**
  * The definition section's timeline, in vh of actual scrolling through the pin —
@@ -167,16 +167,83 @@ export const STATEMENT_VH = 50;
 // still below the fold, and the reader had to scroll again to reach it. Lifting it by a
 // real slice of the viewport brings it up into view as the edge arrives instead: it
 // travels up while the page does, and lands as the gray settles.
-export const STATEMENT_LIFT_VH = 0.4;
-// Fires the instant the hero's doors begin to close, not once its pin lets go — so the
-// text is already on its way up while the panels are still shutting and the orange is
-// turning over to gray. Off the pin's end it began ~31vh later, and that gap is exactly
-// the screen of flat gray this is here to prevent.
-export const STATEMENT_REVEAL_AT_PCT = 120;
+//
+// Sized against the hero rather than picked, and this is the constraint that was
+// missing. The paragraph has to be on screen at the *earliest* offset the wash can
+// finish at, which is the hero's DOOR_CLOSE_AT — the wash is cued there, so a reader
+// who stops on that mark is looking at a completed gray screen. At that offset this
+// section's top edge is CLOSE_VH + HERO_GRAY_TAIL_VH below the fold, and the
+// paragraph sits STATEMENT_PAD_VH under that edge, so the lift has to clear the sum
+// of the three or there is nothing to fade in. See the assertion below.
+export const STATEMENT_LIFT_VH = 0.62;
+
+/**
+ * How far the paragraph sits below its section's top edge, in vh, at the smallest
+ * viewport worth budgeting for. The frame's `md:pt-12` is 48px, which is 5.3vh on a
+ * 900px screen and 8vh on a 600px one; the larger figure is the one the lift has to
+ * clear.
+ */
+const STATEMENT_PAD_VH = 8;
+/**
+ * Where the paragraph's *travel* starts, as the section's top edge against the
+ * viewport. Its fade is not on this at all — see STATEMENT_LIFT_VH.
+ *
+ * Placed at the hero's DOOR_CLOSE_AT, which is the earliest scroll offset at which
+ * the reader can be looking at a finished wash: crossing that mark starts a clock,
+ * and if they stop there the doors shut and the stage goes gray without another pixel
+ * of scrolling. The paragraph therefore has to be *on screen already* by then, or
+ * there is a stretch of gray with nothing on it however the fade is timed.
+ *
+ * `100 + CLOSE_VH + HERO_GRAY_TAIL_VH` is that mark expressed from this section's own
+ * top edge: the hero's pin releases at 100%, its close ends CLOSE_VH before that plus
+ * the tail, so this is DOOR_CLOSE_AT exactly. Written as a sum of the hero's own
+ * constants so retuning either carries this along.
+ */
+export const STATEMENT_REVEAL_AT_PCT = 100 + CLOSE_VH + HERO_GRAY_TAIL_VH;
 // Scrubbed across the section's arrival rather than cued, because what it is doing now
 // is travel rather than a reveal — it has to stay level with the edge coming up, and a
 // timed move cannot. Position-mapped, so a fast scroll gets the same journey, faster.
 export const STATEMENT_LIFT_END_PCT = 60;
+
+/** The scroll the lift is spread over, in vh. */
+export const STATEMENT_LIFT_VH_SPAN =
+  STATEMENT_REVEAL_AT_PCT - STATEMENT_LIFT_END_PCT;
+
+/**
+ * The lift must not exceed the span it is spread over, or the paragraph moves *down*
+ * the screen while the reader scrolls down.
+ *
+ * Its position is `sectionTop + pad + y`, and sectionTop falls 1vh per vh of scroll
+ * while `y` climbs LIFT/SPAN per vh, so the net rate is `LIFT/SPAN − 1`. Above 1 the
+ * sign flips. That was visible with the ease applied to the travel as well as the
+ * fade: `power1.out` leaves the curve at twice the average rate, making the first
+ * third of the reveal run at 2·40/60 − 1 = +0.33 — the paragraph sinking as the page
+ * came up, then turning round and rising. Hence raw progress for `y` and the ease for
+ * opacity only (see paintStatement), and hence this floor under the ratio.
+ */
+if (process.env.NODE_ENV !== "production") {
+  const lift = STATEMENT_LIFT_VH * 100;
+  const rate = lift / STATEMENT_LIFT_VH_SPAN;
+  if (rate > 1) {
+    console.error(
+      `[DefinitionSection] the statement will move downward as the reader scrolls ` +
+      `down: a ${lift}vh lift over a ${STATEMENT_LIFT_VH_SPAN}vh span is ` +
+      `${rate.toFixed(2)}× the page's own rate. Lengthen the span or shorten the lift.`,
+    );
+  }
+  // The other side of it: too *short* a lift and the paragraph is still below the fold
+  // at the offset the hero's wash can already have finished, which is the blank gray
+  // screen this whole arrangement exists to remove.
+  const needed = CLOSE_VH + HERO_GRAY_TAIL_VH + STATEMENT_PAD_VH;
+  if (lift <= needed) {
+    console.error(
+      `[DefinitionSection] the statement is still below the fold when the hero's ` +
+      `wash can already be complete: a ${lift}vh lift against ${needed.toFixed(1)}vh ` +
+      "of section edge + padding. Raise STATEMENT_LIFT_VH, or shorten CLOSE_VH / " +
+      "HERO_GRAY_TAIL_VH.",
+    );
+  }
+}
 
 // The round window opens until it covers the frame, and the photo inside
 // dissolves across the second half of that — derived from the growth rather than
@@ -449,6 +516,18 @@ export const VEIL_OVERHANG_PX = 4;
  * across the whole curve, and on a fade that difference is not visible.
  */
 export const STATEMENT_REVEAL_EASE = gsap.parseEase("power1.out");
+
+/**
+ * The statement's fade, read off the hero's wash rather than off scroll.
+ *
+ * Ease-*in*, which is the opposite of what a reveal normally wants, and deliberate:
+ * the wash is already `sine.inOut`, so it comes up quickly through its middle. A
+ * reveal curve on top of that would put the words at half strength while the stage
+ * behind them was still half orange. Easing in holds the paragraph back until the
+ * gray is most of the way home, so the text arrives *onto* gray rather than over the
+ * turn-over, and the two still finish together.
+ */
+export const STATEMENT_FADE_EASE = gsap.parseEase("power2.in");
 
 /** Soft at both ends, so the camera starts and stops like a scroll would. */
 export const PAN_EASE = gsap.parseEase("power1.inOut");

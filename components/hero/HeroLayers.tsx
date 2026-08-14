@@ -3,7 +3,26 @@
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import type { RefObject } from "react";
-import { DOOR_PANEL_W, DOOR_REST_X, DOOR_REST_Y, holeClip } from "./doors";
+import {
+  DOOR_PANEL_BLEED_PX,
+  DOOR_PANEL_OVERHANG,
+  DOOR_PANEL_W,
+  DOOR_REST_X,
+  DOOR_REST_Y,
+  holeClip,
+} from "./doors";
+
+/**
+ * The panel's box: oversized top and bottom so the diagonal drift never slides it off
+ * its own short edge, and DOOR_PANEL_BLEED_PX wider than its share so the two overlap
+ * rather than merely meet when the doors seal. Both come from ./doors, because the
+ * ribbon's anchors are measured against the same overhang.
+ */
+const PANEL_BOX = {
+  top: `${-DOOR_PANEL_OVERHANG * 100}%`,
+  height: `${(1 + 2 * DOOR_PANEL_OVERHANG) * 100}%`,
+  width: `calc(${DOOR_PANEL_W * 100}% + ${DOOR_PANEL_BLEED_PX}px)`,
+};
 
 /**
  * The static layers of the pinned stage, in paint order: the backdrop, the two
@@ -82,9 +101,9 @@ export function DoorPanels({
     <>
       <div
         ref={leftRef}
-        className="absolute -top-1/4 left-0 z-10 h-[150%] bg-accent"
+        className="absolute left-0 z-10 bg-accent"
         style={{
-          width: `${DOOR_PANEL_W * 100}%`,
+          ...PANEL_BOX,
           transform: reducedMotion
             ? `translate(${-DOOR_REST_X * 100}vw, ${DOOR_REST_Y * 100}vh)`
             : undefined,
@@ -92,9 +111,9 @@ export function DoorPanels({
       />
       <div
         ref={rightRef}
-        className="absolute -top-1/4 right-0 z-10 h-[150%] bg-accent"
+        className="absolute right-0 z-10 bg-accent"
         style={{
-          width: `${DOOR_PANEL_W * 100}%`,
+          ...PANEL_BOX,
           transform: reducedMotion
             ? `translate(${DOOR_REST_X * 100}vw, ${-DOOR_REST_Y * 100}vh)`
             : undefined,

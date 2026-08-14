@@ -17,7 +17,29 @@
       "Bash(sed -i 's/useState\\(false\\);/useState\\(true\\);/' components/DefinitionSection.tsx)",
       "Bash(node snap.mjs rm-after.html)",
       "Bash(sed -i 's/useState\\(true\\);/useState\\(false\\);/' components/DefinitionSection.tsx)",
-      "Bash(node snap.mjs final.html)"
+      "Bash(node snap.mjs final.html)",
+      "Bash(node doorcheck.mjs current)",
+      "Bash(node doorcheck.mjs fixed)",
+      "Bash(node snap.mjs doorfix.html)",
+      "Bash(node closecheck.mjs current)",
+      "Bash(node closecheck.mjs fixed)",
+      "Bash(node snap.mjs closefix.html)",
+      "Bash(sed -i '/^      grayTween?.kill\\(\\);$/d' components/hero/sequence.ts)",
+      "Bash(sed -i '/^  GRAY_HIDE_SECONDS,$/d;/^  GRAY_SECONDS,$/d' components/hero/sequence.ts)",
+      "Bash(node snap.mjs clip.html)",
+      "Bash(\"/c/Program Files/Google/Chrome/Application/chrome.exe\" --headless=new --remote-debugging-port=9222 --user-data-dir=\"C:\\\\\\\\Users\\\\\\\\dell\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\claude\\\\\\\\g--strugbits-Ikra\\\\\\\\e7e8aab7-93f8-4002-b580-2c94274116f1\\\\\\\\scratchpad\\\\\\\\chromeprofile\" --disable-gpu --hide-scrollbars --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows --no-first-run --window-size=1440,900 about:blank)",
+      "Bash(curl -s http://127.0.0.1:9222/json/version)",
+      "Bash(curl -s -o /dev/null -w \"localhost:3000 -> HTTP %{http_code}\\\\n\" http://localhost:3000/ --max-time 20)",
+      "Bash(sed -i 's|http://localhost:3000/|http://localhost:3100/|' probe.mjs)",
+      "Bash(node probe.mjs shots down)",
+      "Bash(python -)",
+      "Bash(sed -i 's/const STOPS_UP = .*/const STOPS_UP = [470, 440, 419, 405, 395, 385, 378, 374, 371, 368, 362, 350];/' probe.mjs)",
+      "Bash(sed -i 's/await page.eval\\(`window.scrollTo\\(0, ${520}/await page.eval\\(`window.scrollTo\\(0, ${600}/' probe.mjs)",
+      "Bash(node probe.mjs shots up)",
+      "Bash(sed -i 's/const STOPS_UP = .*/const STOPS_UP = [410, 404, 402, 400, 399, 398, 397, 396, 394, 392];/' probe.mjs)",
+      "Bash(node transient.mjs)",
+      "Bash(sed -i 's|export const CLOSE_VH_FIXED = \\(OPEN_VH \\\\* CLOSE_SECONDS\\) / OPEN_SECONDS;|export const CLOSE_VH_FIXED = 25;|' closesim.mjs)",
+      "Bash(sed -i 's/^const GRAY_TAIL_VH = 1;/const GRAY_TAIL_VH = 20;/' closesim.mjs)"
     ]
   }
 }

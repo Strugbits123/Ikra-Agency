@@ -1,5 +1,10 @@
 import { gsap } from "@/lib/gsap";
-import { DOOR_PANEL_W, DOOR_REST_X, DOOR_REST_Y } from "./doors";
+import {
+  DOOR_PANEL_OVERHANG,
+  DOOR_PANEL_W,
+  DOOR_REST_X,
+  DOOR_REST_Y,
+} from "./doors";
 
 /**
  * The ribbon's geometry and its two SVG paths. Everything here is derived from the
@@ -50,8 +55,13 @@ export function bandGeometry(stageW: number, stageH: number) {
   // The wedges' horizontal edges. The left wedge exists only *below* its top
   // edge and the right only *above* its bottom edge, which is why the ends have
   // to be pinned rather than merely overlapped.
-  const leftEdge = (DOOR_REST_Y - 0.25) * stageH;
-  const rightEdge = (1.25 - DOOR_REST_Y) * stageH;
+  //
+  // Derived from DOOR_PANEL_OVERHANG rather than restating it: a panel sits that far
+  // above the viewport before it drifts, so its resting edge is exactly this. Written
+  // out as 0.25/1.25 the ribbon would silently unpin from the wedges the moment the
+  // panels were resized.
+  const leftEdge = (DOOR_REST_Y - DOOR_PANEL_OVERHANG) * stageH;
+  const rightEdge = (1 + DOOR_PANEL_OVERHANG - DOOR_REST_Y) * stageH;
 
   // Scales faster than the span, so the copy inside doesn't shrink with it.
   const thickness = gsap.utils.clamp(44, 76, width * 0.072);

@@ -13,6 +13,32 @@ import SiteFooter from "./definition/SiteFooter";
 import { SECTION_VH } from "./definition/timeline";
 
 /**
+ * The stage's and the frame's clip, with the **top edge left open**.
+ *
+ * Both used to be `overflow-hidden`, and that clipped the one thing that has to
+ * escape them. The statement arrives by being lifted up to `STATEMENT_LIFT_VH` of a
+ * viewport above its resting place (see the entrance in ./definition/timeline) —
+ * deliberately, because it has to be on screen while this section's top edge is still
+ * below the fold — but it sits only ~5vh under the frame's own top edge. So for the
+ * whole of its entrance it was *above its own clipping container*: entirely invisible
+ * across the stretch where the hero washes to gray, which is what made that read as an
+ * empty gray screen, then emerging with 92% of it cut off, which is the clipping.
+ *
+ * Only the top is opened. The other three edges are the load-bearing ones: the bottom
+ * hides the definition parked a full frame below (exactly where the footer begins) and
+ * gives the camera its one-viewport window, and the sides clip the growing circle.
+ *
+ * Nothing is exposed by opening it. Above the frame's top edge is the stage's, and
+ * above the stage's is the hero — which by this point is washed to the identical
+ * `--color-gray`, with this stage at z-50 painting over it. Once either is pinned
+ * their top edge *is* the viewport's, so there is nothing above them to draw into.
+ *
+ * 100vh of headroom against a 40vh lift: enough for the paragraph's own height on top
+ * of the lift, at any viewport, with room to spare.
+ */
+const OPEN_TOP_CLIP = "inset(-100vh 0 0 0)";
+
+/**
  * The editorial statement, with the round photo and the "ikra." wordmark stacked
  * below it, the wordmark layered over the photo — and then the wordmark's own dots
  * carrying the page into the footer.
@@ -107,7 +133,8 @@ export default function DefinitionSection() {
           wanted — through the endpoints, which are recomputed per frame. */}
       <div
         ref={stageRef}
-        className={`relative z-50 w-full ${reducedMotion ? "" : "h-screen overflow-hidden"}`}
+        className={`relative z-50 w-full ${reducedMotion ? "" : "h-screen"}`}
+        style={reducedMotion ? undefined : { clipPath: OPEN_TOP_CLIP }}
       >
         <div ref={trackRef} className="relative w-full">
           {/* Screen one. One composition, not two layers: the statement and the
@@ -125,9 +152,10 @@ export default function DefinitionSection() {
               viewport too short for both, the third row gives up its share and
               the composition slides *down*, never up into the copy.
 
-              `overflow-hidden` is load-bearing now that the footer is the next
-              screen down: the definition is parked a full frame-height below the
-              top, which is exactly where the footer begins. */}
+              The clip is load-bearing now that the footer is the next screen down:
+              the definition is parked a full frame-height below the top, which is
+              exactly where the footer begins. It leaves the top edge open so the
+              statement's entrance is not cut off — see OPEN_TOP_CLIP. */}
           <div
             ref={frameRef}
             /* `pt` is deliberately tight: the statement sits at the top of row 1, so
@@ -135,7 +163,8 @@ export default function DefinitionSection() {
                line clears the bottom edge as the section rises. 80px was ~9vh of it on
                a laptop. The composition does not miss it — the circle is centred by the
                two 1fr rows, not by this. */
-            className="relative grid h-screen w-full grid-rows-[1fr_auto_1fr] items-start overflow-hidden px-14 pt-10 pb-10 md:px-36 md:pt-12"
+            className="relative grid h-screen w-full grid-rows-[1fr_auto_1fr] items-start px-14 pt-10 pb-10 md:px-36 md:pt-12"
+            style={{ clipPath: OPEN_TOP_CLIP }}
           >
             <Statement
               statementRef={statementRef}
@@ -163,10 +192,16 @@ export default function DefinitionSection() {
             <DictionaryInFlow className="px-14 pb-24 md:px-36" />
           )}
 
+          {/* The ref arrays stay here and the footer is handed writers into them,
+              rather than the arrays themselves — see SiteFooter's props. */}
           <SiteFooter
             footerRef={footerRef}
-            revealRefs={revealRefs}
-            slotRefs={slotRefs}
+            registerReveal={(i, el) => {
+              revealRefs.current[i] = el;
+            }}
+            registerSlot={(i, el) => {
+              slotRefs.current[i] = el;
+            }}
             reducedMotion={reducedMotion}
           />
         </div>

@@ -10,6 +10,7 @@ import {
   fallAt,
   penetrationAt,
 } from "./dots";
+import { heroWash } from "../hero/handoff";
 import { createMeasure } from "./measure";
 import {
   DICT_AT,
@@ -28,10 +29,10 @@ import {
   PAN_EASE,
   PAN_SECONDS,
   PIN_VH,
+  STATEMENT_FADE_EASE,
   STATEMENT_LIFT_END_PCT,
   STATEMENT_LIFT_VH,
   STATEMENT_REVEAL_AT_PCT,
-  STATEMENT_REVEAL_EASE,
   STATEMENT_VH,
   TAIL_AT,
   TAIL_BACK_SECONDS,
@@ -570,12 +571,43 @@ export function createDefinitionSequence(
      * putting it on the tween as well would apply it twice.
      */
     const paintStatement = (progress: number) => {
-      const p = STATEMENT_REVEAL_EASE(gsap.utils.clamp(0, 1, progress));
+      const raw = gsap.utils.clamp(0, 1, progress);
       gsap.set(refs.statementReveal.current, {
-        y: -(1 - p) * STATEMENT_LIFT_VH * window.innerHeight,
-        opacity: p,
+        // Travel: raw, so it is linear in scroll and the net motion is monotonically
+        // upward. Easing this as well made the curve leave at twice its average rate,
+        // which is faster than the page itself and therefore *downward* for the first
+        // third — the up-then-down that was reported. See the assertion in ./timeline.
+        y: -(1 - raw) * STATEMENT_LIFT_VH * window.innerHeight,
+        // Presence: the hero's wash, not the scroll. The wash is cued, so it finishes
+        // wherever the reader stops, and a scroll-mapped fade could not keep up with
+        // it in either direction — the gray landed 31vh before the words did going
+        // down, and the words outlived the doors going up. On the same clock the two
+        // are one gesture at any speed. See hero/handoff.
+        opacity: STATEMENT_FADE_EASE(heroWash.active ? heroWash.p : 1),
       });
     };
+
+    /**
+     * The wash runs on its own clock, so a frame where it moved is not necessarily a
+     * frame where this section's ScrollTrigger fired — a reader who stops on the cue
+     * gets the whole wash with no further scroll events at all. Repainting off the
+     * ticker is what lets the statement arrive with it; it is one `gsap.set`, and only
+     * when the value has actually moved.
+     */
+    // `active` is part of the key, not just `p`. This section's sequence is built a
+    // commit *before* the hero's — that one waits on `mounted` — so the first paint
+    // here runs against `active: false` and falls back to 1. Keyed on `p` alone, the
+    // hero then coming up with `p` still 0 was not a change, no repaint happened, and
+    // the paragraph sat at full opacity over the orange until the wash first moved.
+    let lastWash = -1;
+    let lastActive = false;
+    const syncStatement = () => {
+      if (heroWash.p === lastWash && heroWash.active === lastActive) return;
+      lastWash = heroWash.p;
+      lastActive = heroWash.active;
+      paintStatement(statementTrigger.progress);
+    };
+    gsap.ticker.add(syncStatement);
     const statementTrigger = ScrollTrigger.create({
       trigger: section,
       start: `top ${STATEMENT_REVEAL_AT_PCT}%`,
@@ -593,6 +625,7 @@ export function createDefinitionSequence(
 
     return () => {
       cancelled = true;
+      gsap.ticker.remove(syncStatement);
       sizeObserver.disconnect();
       // Created inside runTail, so the context never collected it.
       tailTween?.kill();

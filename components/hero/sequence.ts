@@ -1,8 +1,16 @@
 import type { RefObject } from "react";
 import { gsap, ScrollTrigger } from "@/lib/gsap";
-import { DOOR_REST_X, DOOR_REST_Y, DOOR_SEALED_AT, holeClip } from "./doors";
+import {
+  DOOR_REST_X,
+  DOOR_REST_Y,
+  DOOR_SEALED_AT,
+  doorDrift,
+  holeClip,
+} from "./doors";
 import { BAND_CLOSED, BAND_FULL, BAND_UNDRAWN, bandClip } from "./band";
 import { BACKGROUND_VISIBLE_AT_DOOR } from "./footage";
+import { createFlooredCue } from "./flooredCue";
+import { heroWash } from "./handoff";
 import { STACK_IN, STACK_OUT, leadSeat, leapSeat, stackSeat } from "./seats";
 import {
   BAND_CLEAR_AT,
@@ -12,14 +20,14 @@ import {
   BAND_HIDE_SECONDS,
   BAND_REVERSE_SPEED,
   BAND_UNDRAW_AT,
+  CLOSE_END,
   CLOSE_REVERSE_SPEED,
+  CLOSE_SPAN,
   CLOSE_SEALED_P,
   CLOSE_SECONDS,
   DOOR_CLOSE_AT,
   DOOR_OPEN_AT,
   GAP_LINES,
-  GRAY_HIDE_SECONDS,
-  GRAY_SECONDS,
   LEAP_AT,
   LEAP_IN_VH,
   OPEN_REVERSE_SPEED,
@@ -104,6 +112,10 @@ export function createHeroSequence(
   refs: SequenceRefs,
 ) {
   return gsap.context(() => {
+    // Announces to DefinitionSection that there is a hero in front of it whose wash
+    // its statement should arrive with (see ./handoff).
+    heroWash.active = true;
+
     // The ribbon, kept off the scrub entirely (see BAND_DRAW_AT), and driven as one
     // number sweeping BAND_UNDRAWN → BAND_FULL → BAND_CLOSED (see bandClip).
     //
@@ -157,30 +169,27 @@ export function createHeroSequence(
     const BAND_IN = gsap.parseEase("power2.out");
     const BAND_OUT = gsap.parseEase("power2.in");
 
-    // The orange→gray turn-over, latched the same way (see CLOSE_SEALED_P).
-    //
-    // Simpler than the ribbon in one respect: the hidden state *is* opacity 0, so
-    // there is no parked-at-the-wrong-end problem to undo first and no `midFlight`
-    // case — a reversal just tweens back from wherever it reached.
-    //
-    // `sine.inOut` both ways: this is a full-screen change of colour, so it has to
-    // leave and arrive at zero velocity or the turn-over announces itself at one
-    // end. The reverse is faster because it is racing the doors parting underneath
-    // it, not because it should feel different.
-    let grayShown = false;
-    let grayTween: gsap.core.Tween | null = null;
-    function washGray(show: boolean) {
-      const el = refs.gray.current;
-      if (!el || show === grayShown) return;
-      grayShown = show;
-      grayTween?.kill();
-      grayTween = gsap.to(el, {
-        opacity: show ? 1 : 0,
-        duration: show ? GRAY_SECONDS : GRAY_HIDE_SECONDS,
-        ease: "sine.inOut",
-        overwrite: "auto",
-      });
-    }
+    /**
+     * The orange→gray turn-over.
+     *
+     * Read straight off the close's own progress rather than cued on a clock of its
+     * own, and that is the fix for not being able to watch the doors reopen. The wash
+     * sits at z-25 over panels at z-10, so any door travel that happens while it is
+     * still opaque is travel the reader cannot see — and as a cue it had a fixed 0.8s
+     * to clear while the doors underneath it were being driven by the scroll. Two
+     * clocks racing, so which one won depended entirely on how fast the reader was
+     * going: at a reading pace it hid half the aperture opening, at 120vh/s all of it.
+     * That is the "sometimes" — it was never the doors, it was what was on top of them.
+     *
+     * One clock cannot drift against itself. Tied to `closeP`, the gray is at zero
+     * exactly when the panels part and at one exactly when they meet, at every scroll
+     * speed and in both directions, so the reopening is never covered and the wash can
+     * never be caught half-done by the pin releasing.
+     *
+     * `sine.inOut` on the read: a full-screen change of colour has to leave and arrive
+     * at zero velocity or the turn-over announces itself at one end.
+     */
+    const GRAY_EASE = gsap.parseEase("sine.inOut");
 
     // The doors' return, cued (see DOOR_CLOSE_AT) where the opening is scrubbed — and
     // the asymmetry is deliberate rather than left over. A cue lands at a mark that
@@ -204,27 +213,20 @@ export function createHeroSequence(
     // duration is proportional to the ground left, so a reversal mid-close runs back
     // at the rate it came out at instead of taking the full CLOSE_SECONDS to cover a
     // sliver.
-    const close = { p: 0 };
-    let closing = false;
-    let closeTween: gsap.core.Tween | null = null;
-    function closeDoors(shut: boolean) {
-      if (shut === closing) return;
-      closing = shut;
-      const to = shut ? 1 : 0;
-      closeTween?.kill();
-      closeTween = gsap.to(close, {
-        p: to,
-        // Proportional to the ground left, and slower coming back — see
-        // CLOSE_REVERSE_SPEED for why this reverse is the one that wants stretching
-        // rather than shortening.
-        duration:
-          (CLOSE_SECONDS * Math.abs(to - close.p)) /
-          (shut ? 1 : CLOSE_REVERSE_SPEED),
-        ease: "power2.inOut",
-        onUpdate: paintStage,
-        overwrite: "auto",
-      });
-    }
+    // Floored against CLOSE_SPAN rather than left as a bare cue, which is what it was.
+    // A bare cue cannot hold the pin — it costs no designed scroll — so the close was
+    // reliably cut off: 1.15s of move with 4vh behind it meant the veil arrived with
+    // the doors about a seventh shut at any ordinary pace. See CLOSE_VH.
+    //
+    // `power2.inOut` is applied on read (CLOSE_EASE, below) rather than on the tween,
+    // so the clock and the scroll floor are compared on the same raw progress and an
+    // interrupted run does not re-ease from wherever it was caught.
+    const close = createFlooredCue({
+      span: CLOSE_SPAN,
+      seconds: CLOSE_SECONDS,
+      reverseSpeed: CLOSE_REVERSE_SPEED,
+      onUpdate: () => paintStage(),
+    });
 
     // --- The opening: one path, a clock on it, and a floor under it ---
     //
@@ -234,27 +236,12 @@ export function createHeroSequence(
     // the scroll and never behind it. That bound is what makes the clock affordable:
     // the doors are open by DOOR_OPEN_AT whatever the reader does, so every mark below
     // is fixed and nothing downstream inherits their speed. See OPEN_VH.
-    const cue = { p: 0 };
-    let cueTo = 0;
-    let cueTween: gsap.core.Tween | null = null;
-    function openPath(next: number) {
-      if (next === cueTo) return;
-      cueTo = next;
-      cueTween?.kill();
-      cueTween = gsap.to(cue, {
-        p: next,
-        // Proportional to the ground left, so a reversal partway runs back at the rate
-        // it came out at rather than taking the full duration to cover a sliver.
-        duration:
-          (OPEN_SECONDS * Math.abs(next - cue.p)) /
-          (next < cue.p ? OPEN_REVERSE_SPEED : 1),
-        // The easing is per leg, in paintStage. An ease here would ease the path as
-        // well and double up on it.
-        ease: "none",
-        onUpdate: paintStage,
-        overwrite: "auto",
-      });
-    }
+    const opening = createFlooredCue({
+      span: OPEN_SPAN,
+      seconds: OPEN_SECONDS,
+      reverseSpeed: OPEN_REVERSE_SPEED,
+      onUpdate: () => paintStage(),
+    });
 
     let lastVh = 0;
     /**
@@ -288,18 +275,33 @@ export function createHeroSequence(
      */
     const DIR_FLIP_VH = 3;
 
+    /**
+     * A reversal re-anchors *both* moves on what is currently on screen, so the swap
+     * from floor to ceiling inside each of them cannot move anything — see
+     * createFlooredCue for what that swap costs without it.
+     *
+     * Both, not just the one the reader is looking at: the close is bounded by its own
+     * span and the opening by its own, and a reader coming back up out of
+     * DefinitionSection crosses the close's reversal while the opening is still parked
+     * wide open. Rebasing only one leaves the other holding a stale offset for the rest
+     * of the section.
+     */
     function trackDirection(vh: number) {
       if (scrollDir > 0) {
         if (vh > dirPeak) dirPeak = vh;
         else if (vh < dirPeak - DIR_FLIP_VH) {
           scrollDir = -1;
           dirPeak = vh;
+          opening.rebase(vh);
+          close.rebase(vh);
         }
       } else {
         if (vh < dirPeak) dirPeak = vh;
         else if (vh > dirPeak + DIR_FLIP_VH) {
           scrollDir = 1;
           dirPeak = vh;
+          opening.rebase(vh);
+          close.rebase(vh);
         }
       }
     }
@@ -314,6 +316,44 @@ export function createHeroSequence(
      * the doors used to cross two of these inside 12vh (see OPEN_VH).
      */
     const LEG_EASE = gsap.parseEase("power2.inOut");
+
+    /**
+     * The close's own shape, so the panels leave and arrive at rest. Applied on read
+     * rather than on the tween — same reasoning as LEG_EASE, and load-bearing here
+     * because the floor under the close is linear in scroll: easing the tween would
+     * shape the clock and leave the floor unshaped, so which of the two was leading
+     * would be visible as a change of speed.
+     */
+    const CLOSE_EASE = gsap.parseEase("power2.inOut");
+
+    /**
+     * The close's *raw* progress at which the panels meet — CLOSE_SEALED_P run back
+     * through CLOSE_EASE.
+     *
+     * The wash is spanned against this rather than against the eased position, and
+     * that is what keeps the gray from looking finished long before it is. Read off
+     * the eased value the wash inherits the close's own ease *and* applies its own on
+     * top, and two stacked inOut curves have a very long tail: the last one percent of
+     * the gray cost 5.3vh of scroll, a stretch where the screen is to all appearances
+     * already gray and the next section's statement has not been cued yet. Against raw
+     * progress the wash is linear in scroll with one ease on it, and that stretch is
+     * 1.3vh. Nothing is given up — the arrival is still at zero velocity, from the
+     * sine, and the start still lands exactly on the frame the panels meet, because
+     * this is that frame by construction.
+     *
+     * Solved by bisection rather than inverted in closed form, so it follows CLOSE_EASE
+     * rather than going stale beside it — same reasoning as APERTURE_AT above.
+     */
+    const CLOSE_SEALED_RAW = (() => {
+      let lo = 0;
+      let hi = 1;
+      for (let i = 0; i < 40; i++) {
+        const mid = (lo + hi) / 2;
+        if (CLOSE_EASE(mid) < CLOSE_SEALED_P) lo = mid;
+        else hi = mid;
+      }
+      return (lo + hi) / 2;
+    })();
 
     /**
      * The path fraction at which a gap first appears between the panels.
@@ -372,9 +412,12 @@ export function createHeroSequence(
       // notches to shut a door that took one to open, stalling partway with a sliver of
       // footage showing. Going up the same ramp has to act as a ceiling instead, and
       // then the reverse is one gesture too.
-      const boundP = ramp(vh, OPEN_SPAN);
-      const pathP =
-        scrollDir < 0 ? Math.min(cue.p, boundP) : Math.max(cue.p, boundP);
+      //
+      // The offset inside the cue is what keeps that swap from being a jump: it holds
+      // the ramp on the doors' own position across a reversal and bleeds off as the
+      // reader commits. Without it the two sides disagree by however far the clock had
+      // run ahead, and the swap pays that difference in a single frame.
+      const pathP = opening.read(vh, scrollDir);
 
       // The two legs of that one path, overlapping rather than sequential. The panels
       // run the whole path; the hole closes across the part of it that ends as the
@@ -390,7 +433,16 @@ export function createHeroSequence(
       // closes, and only in width. A clip costs no layout work, and this owns it
       // outright: the load timeline animates opacity only and leaves the hole open,
       // so sealP = 0 is already the state the entrance faded up into.
-      gsap.set(box, { clipPath: holeClip(sealP) });
+      // `visibility` alongside the clip because a zero-width `inset()` is not reliably
+      // zero pixels: the box is sized in vw, so the two halves can round apart and
+      // paint a one-pixel column of footage over the panels — this box is z-20 and
+      // they are z-10. Hidden only at the very end, where the hole has no width left
+      // to show anyway, so nothing about the closing is changed by it. See holeClip
+      // for why the alternative — closing the hole past centre — is not available.
+      gsap.set(box, {
+        clipPath: holeClip(sealP),
+        visibility: sealP >= 1 ? "hidden" : "visible",
+      });
 
       // Same driver rather than a window of its own, so the copy is gone at the
       // exact moment the hole seals.
@@ -500,9 +552,17 @@ export function createHeroSequence(
       // scaled back to zero, so the panels retrace the exact path they came out on.
       // Note the copy rides `doorP`, not this — it must stay gone while the doors
       // return, not play itself backwards.
-      const closeP = close.p;
+      // Eased on read for the same reason the opening is: the clock and the scroll
+      // floor are compared raw inside the cue, and an ease on the tween would shape
+      // only one of the two.
+      // Both forms are needed: the eased one is where the panels *are*, the raw one is
+      // linear in scroll and is what the wash is spanned against (see CLOSE_SEALED_RAW).
+      const closeRaw = close.read(vh, scrollDir);
+      const closeP = CLOSE_EASE(closeRaw);
       const doorNow = doorP * (1 - closeP);
-      const drift = gsap.utils.clamp(0, 1, doorNow / 0.7);
+      // Shaped rather than linear, so a panel's short edge cannot climb into frame
+      // while the two are still overlapped — see doorDrift.
+      const drift = doorDrift(doorNow);
       gsap.set(refs.panelLeft.current, {
         x: -doorNow * W * DOOR_REST_X,
         y: drift * H * DOOR_REST_Y,
@@ -549,11 +609,22 @@ export function createHeroSequence(
       );
 
       // --- Phase 6: orange turns over to gray, on the close's own progress ---
-      // Fired the instant the panels meet rather than at a mark in vh, which is what
-      // guarantees there is no flat-orange stall between the two at any scroll speed
-      // (see CLOSE_SEALED_P). Latched, so this is a threshold and not a scrub — the
-      // wash is one timed move in both directions (see washGray).
-      washGray(closeP >= CLOSE_SEALED_P);
+      // Spanning exactly the stretch where the panels are overlapped, so the gray
+      // arrives across the part of the close that has nothing else to look at and is
+      // gone the instant there is something. That is what keeps the reopening visible
+      // at every scroll speed — see GRAY_EASE.
+      //
+      // Against `closeRaw`, not `closeP`: the eased value carries the close's own
+      // curve, and easing the wash on top of it stretched the last percent of the gray
+      // across 5.3vh — long enough for the screen to look finished while the next
+      // section's statement was still waiting on its cue. See CLOSE_SEALED_RAW.
+      const washP = GRAY_EASE(ramp(closeRaw, [CLOSE_SEALED_RAW, 1]));
+      // Published so DefinitionSection's statement can arrive on this clock rather
+      // than on a scroll mark the clock is free to outrun — see ./handoff.
+      heroWash.p = washP;
+      gsap.set(refs.gray.current, {
+        opacity: washP,
+      });
 
       // A 1080p decode is not free, so the footage only runs while some of it can be
       // seen — which covers both ends of the sequence.
@@ -597,7 +668,7 @@ export function createHeroSequence(
       // simply shut. Between the two — and only there — a reversal means the reader is
       // walking the opening backwards and wants it to run backwards, which is what
       // pairs with the `min` in paintStage.
-      openPath(
+      opening.aim(
         vh >= DOOR_OPEN_AT ? 1 : vh < SEAL_AT || scrollDir < 0 ? 0 : 1,
       );
 
@@ -622,16 +693,33 @@ export function createHeroSequence(
       // --- Phase 5: the closing line, and Phase 6 the wash — both painted in
       // paintStage, off the close's progress rather than off scroll.
 
-      // --- Phase 6: the doors close (cue) ---
-      // A threshold like the wash's, crossed in either direction so scrolling back
-      // up parts them again on the same timed move.
+      // --- Phase 6: the doors close (cued, with a floor under it) ---
+      // A threshold crossed in either direction, so scrolling back up parts them
+      // again on the same move played backwards. The floor is inside the cue: below
+      // the crossover the clock plays the whole 1.15s, above it the scroll finishes
+      // the job — but the panels are *shut* by the end of CLOSE_SPAN either way,
+      // rather than being cut off wherever the veil happened to arrive.
       //
       // The wash rides this rather than a mark of its own, so the gray follows the
       // panels meeting at every scroll speed. Which is also why the gray is a layer
       // over the top rather than a background-colour tween: the orange is painted
       // by three separate elements here (the section and both panels), and one
       // layer over them is a single number instead of three that have to agree.
-      closeDoors(vh >= DOOR_CLOSE_AT);
+      //
+      // The direction term is what makes the *reverse* one gesture, and it is the
+      // same one the opening carries. Without it the clock stays aimed at 1 for the
+      // whole way back up — it is only re-aimed once vh drops below DOOR_CLOSE_AT,
+      // which is past the far end of the span — so `min(clock, bound)` left the bound
+      // in sole charge and the doors reopened by scrubbing across all of CLOSE_VH.
+      // That is five wheel notches to undo something one notch did.
+      //
+      // Direction decides it only *inside* the span, exactly as for the opening. Past
+      // CLOSE_END the doors are simply shut, and below DOOR_CLOSE_AT simply open;
+      // only between the two does a reversal mean the reader is walking the close
+      // backwards and wants it to run backwards.
+      close.aim(
+        vh >= CLOSE_END ? 1 : vh < DOOR_CLOSE_AT ? 0 : scrollDir < 0 ? 0 : 1,
+      );
 
       // --- Phase 7: a short guard on flat gray — already the next section's
       // colour, so the pin releasing is invisible.
@@ -708,13 +796,13 @@ export function createHeroSequence(
     });
 
     return () => {
+      heroWash.active = false;
       refs.catchUp.current = null;
       refs.hurryIntro.current = null;
       // Created inside onUpdate, so the context never collected them.
       bandTween?.kill();
-      grayTween?.kill();
-      closeTween?.kill();
-      cueTween?.kill();
+      close.kill();
+      opening.kill();
       trigger.kill();
     };
   }, section);

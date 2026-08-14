@@ -76,9 +76,9 @@ import { DOOR_SEALED_AT } from "./doors";
  *              reaching zero exactly as the panels meet — 72% of the way through the
  *              close, since closing retraces the opening (see CLOSE_SEALED_P). The
  *              remaining 28% is the identical flat orange rectangle every frame.
- *  352–369vh   pinned scroll held over that close so an ordinary gesture cannot
- *              unpin the stage while the panels are still moving (DOOR_CLOSE_VH).
- *              Not the close's length — it plays at its own speed inside this.
+ *              the scroll floor under that close, so it is complete at a fixed mark
+ *              however fast the reader goes (CLOSE_VH). Not the close's length —
+ *              below the crossover it plays at its own speed inside this.
  *              (cue) the moment the panels meet, the sealed orange washes over to
  *              the next section's gray, off the close's progress rather than a mark
  *              of its own so nothing can open a flat-orange stall between the two.
@@ -462,9 +462,9 @@ const LEAP_HOLD_VH = 38;
  * progress scaled back to zero (see paintStage), and only the clock under that
  * scaling has changed.
  *
- * DOOR_CLOSE_VH is *not* the close's length — that is CLOSE_SECONDS. It is pinned
- * scroll held over the close so an ordinary gesture cannot unpin the stage while the
- * panels are still moving; a flick that outruns it is caught by the next section's
+ * CLOSE_VH is *not* the close's length — that is CLOSE_SECONDS. It is the scroll the
+ * close is floored against, so the move is complete at a fixed mark whether the clock
+ * or the reader got it there; a flick that outruns it is caught by the next section's
  * veil, which is opaque before the boundary crossing either way.
  *
  * Both numbers are floors rather than preferences, and the tail below is where any
@@ -476,14 +476,16 @@ const LEAP_HOLD_VH = 38;
  */
 export const DOOR_CLOSE_AT = LEAP_AT + LEAP_IN_VH + LEAP_HOLD_VH;
 /**
- * 1.15 rather than 0.95, and the guard under it (DOOR_CLOSE_VH) raised to match.
+ * 1.15 rather than 0.95, and the floor under it (CLOSE_VH) is derived from it, so
+ * retiming this carries the scroll window along instead of leaving the move without
+ * room to finish in.
  *
  * Only 72% of this is ever watched — the panels cover the screen at CLOSE_SEALED_P and
  * every frame after that is the same flat rectangle — so the move the reader actually
  * sees is 0.72s of it, against 0.6s before. The extra is small on purpose: the fault
  * this addresses was never mostly the duration, it was that the window had shrunk below
- * it (see DOOR_CLOSE_VH), and a close long enough to be unmistakable at 4vh of pin would
- * have been a slow one at 20.
+ * it, and a close long enough to be unmistakable at 4vh of pin would have been a slow
+ * one at 20.
  */
 export const CLOSE_SECONDS = 1.15;
 
@@ -502,41 +504,41 @@ export const CLOSE_SECONDS = 1.15;
  */
 export const CLOSE_REVERSE_SPEED = 0.63;
 /**
- * Pinned scroll held over the close — and now only a token amount of it.
+ * The scroll the close is floored against — the same bargain the opening makes, and
+ * for the same reason (see OPEN_VH).
  *
- * This and GRAY_TAIL_VH are the whole of what separates the doors meeting from the pin
- * letting go, and every vh of it is a screen the next section cannot be seen through.
- * The stage is pinned, which is `position: fixed` over the whole viewport, and with
- * `pinSpacing: false` DefinitionSection's top edge clears the bottom of the screen at
- * exactly PIN_VH — so *any* tail here is flat gray with the statement stuck below the
- * fold, whatever that section does. Cueing the statement earlier cannot help; there is
- * nowhere for it to be drawn.
+ * This was 4, on the reasoning that a cue "plays out as the boundary crosses rather
+ * than being cut off". That reasoning had a hole in it, and the hole is the veil:
+ * DefinitionSection's cover is fully opaque one vh before the pin releases, so
+ * anything still moving at that point does not play out as the boundary crosses, it
+ * plays out *underneath* an opaque gray slab. With 4vh of window against a 1.15s move
+ * the close was about a seventh done when the veil arrived at any ordinary pace, and
+ * a reader had to be under 4.3vh/s to watch the doors actually meet. The gesture was
+ * effectively never seen.
  *
- * So the guard is spent rather than kept: 21vh between the two has come down to 5. The
- * close is cued and finishes on its own clock, so it plays out as the boundary crosses
- * rather than being cut off, and it is not exposed by that — DefinitionSection's veil is
- * the same gray and is fully opaque before the crossing begins (see VEIL_VH). What the
- * reader sees is the panels meeting, the orange turning over, and the statement already
- * rising into the gray, with no held frame anywhere between them.
+ * A cue alone cannot fix that, because a cue costs no designed scroll and so cannot
+ * hold the pin. A scrub alone cannot either — a wheel notch is ~11vh and no span the
+ * panels can visibly travel across fits inside one. So the close gets what the opening
+ * has: a clock with a scroll floor under it, which plays the whole designed move for
+ * anyone below the crossover and compresses it continuously above, but is *complete*
+ * at a fixed mark either way.
  *
- * The note this replaces:
+ * 25 rather than the ~57 that matching the opening's crossover would give, and the
+ * reason is downstream rather than here. Every vh of this span is scroll the reader
+ * spends after a move that has already finished on its clock — stop just past
+ * DOOR_CLOSE_AT and the doors are shut and the stage is gray with the whole span still
+ * ahead. It also pushes the next section that much further below the fold at the
+ * moment the wash lands, and the statement's lift has to clear the sum of the two (see
+ * STATEMENT_LIFT_VH). Short is better on both counts.
  *
- * Sized against the *visible* part of the close, and nothing more.
- *
- * The panels cover the screen at CLOSE_SEALED_P — 72% in, about 0.68s — and every
- * frame after that is the same flat orange rectangle, so the guard only has to hold
- * the pin that far. 17vh is roughly that long at a steady scroll. The invisible
- * remainder finishes after the pin lets go, and it is not exposed by that: the next
- * section's veil is fully opaque on the frame the boundary crossing begins, so even a
- * flick that unpins mid-close has the stage covered before any of it could be seen.
- *
- * It has come down 30 → 22 → 17, and CLOSE_SECONDS 1.1 → 0.95 with it, because every
- * vh between the panels sealing and the pin releasing is blank gray with the next
- * section still behind a fixed stage. The two have to move together: shorten the
- * guard without the close and an ordinary scroll unpins while the doors are still
- * visibly travelling.
+ * What it costs is only the crossover: at 25 the clock leads below ~22vh/s and the
+ * scroll finishes the job above it. Being outrun is not a failure here — the floor
+ * guarantees the panels are shut by CLOSE_END either way, which is the property that
+ * matters and the one a bare cue could not give.
  */
-export const DOOR_CLOSE_VH = 4;
+export const CLOSE_VH = 25;
+export const CLOSE_END = DOOR_CLOSE_AT + CLOSE_VH;
+export const CLOSE_SPAN = [DOOR_CLOSE_AT, CLOSE_END] as const;
 
 /**
  * How far through the close the panels meet and the stage reads as one unbroken
@@ -555,41 +557,44 @@ export const DOOR_CLOSE_VH = 4;
  */
 export const CLOSE_SEALED_P = 1 - DOOR_SEALED_AT;
 
-/**
- * The stage turning over from orange to the next section's gray, in one move.
+/*
+ * The wash to gray has no constants of its own any more, and that is deliberate.
  *
- * On the same footing as the ribbon and the close: a cue fires a timed tween, so the
- * turn-over is one move at one speed whatever the scroll was doing and no stopping
- * place can leave the stage half orange and half gray.
+ * It used to be a cue like the ribbon and the close — 1.3s in, 0.8s out — on the
+ * reasoning that a full-screen turn-over should be one move at one speed whatever the
+ * scroll was doing. What that missed is that the wash is *on top of* the doors (z-25
+ * against z-10), so its clock was racing theirs rather than accompanying it, and the
+ * winner depended on the reader's speed. Coming back up it hid half the doors
+ * reopening at a reading pace and all of it at 120vh/s.
  *
- * A wash that outruns its pinned scroll is not cut off — it is on its own clock, so
- * it keeps running after the pin lets go and always plays in full, finishing off
- * screen under DefinitionSection's veil, which is the same --color-gray and fades in
- * across this same stretch.
+ * So it is scrubbed off `closeP` instead, spanning exactly CLOSE_SEALED_P → 1 — the
+ * stretch where the panels are overlapped and there is nothing behind it to hide. One
+ * clock cannot drift against itself: the gray is now at zero on the exact frame the
+ * panels part, at every speed and in both directions. See GRAY_EASE in ./sequence.
  */
-export const GRAY_SECONDS = 1.3;
-export const GRAY_HIDE_SECONDS = 0.8;
 
 /**
- * Pinned scroll left once the close has had its guard — the whole of what remains,
- * and the only stretch of this section that can be flat gray with nothing in it.
+ * Pinned scroll left once the wash is home — and it is not a guard, it is the window
+ * the *next* section's statement arrives in. Published as HERO_GRAY_TAIL_VH, and
+ * DefinitionSection derives its statement's cue from it so the two cannot drift.
  *
- * Deliberately shorter than the wash it covers: the wash is on its own clock and
- * finishes off screen under DefinitionSection's veil, which is the same colour, so
- * holding the pin out to meet it buys nothing and costs the reader a blank screen.
+ * It was 1, on the reasoning that every vh here is flat gray with the next section
+ * below the fold and therefore waste. That reasoning is right about the colour and
+ * wrong about what is on top of it: the statement is lifted up out of its own section
+ * (see STATEMENT_LIFT_VH) precisely so it can be drawn over this stretch, at z-50,
+ * above the hero. This is not empty gray — it is where the paragraph rises into view.
  *
- * 5, and it is the veil's whole dissolve window as well as this hold — the two are the
- * same stretch (see HERO_GRAY_TAIL_VH). That is short for a cross-fade and does not
- * matter here, because by this point the hero has already washed to `--color-gray` on
- * its own and the veil is gray fading in over gray. Its only real job is to be fully
- * opaque before the boundary crossing, which it reaches whatever the window.
+ * What it actually buys is *room*, and the ordering is enforced elsewhere. The
+ * statement's presence rides the wash itself (see ./handoff), so the two are one
+ * gesture whatever the reader does; this is simply the pinned scroll that keeps the
+ * hero on screen long enough for that gesture to be watched rather than scrolled past.
  *
- * Every vh here is a vh of pinned gray with the next section still below the fold, so
- * this is as low as it goes: below 4 the release starts landing on the same frame the
- * wash is cued on, and the veil loses the window it needs to commit before the
- * crossing.
+ * Together with CLOSE_VH it also fixes how far below the fold the next section sits
+ * when the wash can first be complete, which is what STATEMENT_LIFT_VH has to clear —
+ * there is an assertion on that pairing in ../definition/timeline. Lengthening either
+ * constant pushes the statement further down and eventually past that check.
  */
-const GRAY_TAIL_VH = 1;
+const GRAY_TAIL_VH = 20;
 
 /**
  * The pin plus the viewport the pinned stage occupies: the pin runs `top top` →
@@ -599,7 +604,7 @@ const GRAY_TAIL_VH = 1;
  * and the wash are both cued: enough pinned scroll that an ordinary gesture cannot
  * unpin the stage mid-move, and no more.
  */
-export const PIN_VH = DOOR_CLOSE_AT + DOOR_CLOSE_VH + GRAY_TAIL_VH;
+export const PIN_VH = DOOR_CLOSE_AT + CLOSE_VH + GRAY_TAIL_VH;
 export const SECTION_VH = PIN_VH + 100;
 
 /**
