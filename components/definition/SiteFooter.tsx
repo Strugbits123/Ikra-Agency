@@ -129,14 +129,14 @@ export default function SiteFooter({
         {/* Hidden below md, where the three stacked columns already run
             the full height of the frame and this would only be clipped
             off the bottom by the camera's own clamp. */}
-        <div
+        {/* <div
           ref={(el) => registerReveal(FOOTER_COLUMNS.length, el)}
           style={reducedMotion ? undefined : { opacity: 0 }}
           className="mt-12 hidden border-t border-ink/15 pt-5 text-sm font-light text-ink/55 md:flex md:items-center md:justify-between"
         >
           <p>© {new Date().getFullYear()} ikra studio. All rights reserved.</p>
           <p>Rebranding agency for the most discerning ambitions.</p>
-        </div>
+        </div> */}
       </div>
     </div>
   );

@@ -48,7 +48,13 @@
       "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\dict-overlap.mjs\")",
       "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\mark-timing.mjs\")",
       "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\comp-check.mjs\")",
-      "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\comp-check.mjs\" 2>&1)"
+      "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\comp-check.mjs\" 2>&1)",
+      "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" status --porcelain)",
+      "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" diff HEAD --stat)",
+      "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" log --oneline -6)",
+      "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" diff HEAD -- components/DefinitionSection.tsx)",
+      "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" diff HEAD -- components/definition/SiteFooter.tsx)",
+      "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" diff HEAD -- components/Footer.tsx)"
     ]
   }
 }

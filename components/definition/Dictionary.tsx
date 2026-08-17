@@ -41,10 +41,16 @@ export function RevealBlock({
 
 const DICTIONARY_CONTENT = (
   <>
-    <p className="text-lg font-light text-ink/80 italic md:text-xl">
-      /ɪˈkrɑ/ <span className="not-italic">noun, uncount.</span>
+    <p className="text-lg font-medium text-ink/80 md:text-xl">
+      /<span className="font-extralight inline-block" >ɪ</span>ˈkra/ <span className="not-italic">noun, uncount.</span>
     </p>
-    <p className="mt-2 text-base font-light text-ink/60">
+
+
+    {/* <p className="text-lg font-light text-ink/80 italic md:text-xl">
+      /ɪˈkrɑ/ <span className="not-italic">noun, uncount.</span>
+    </p> */}
+
+    <p className="mt-2 text-base font-medium text-ink/60">
       from Russian икра (caviar)
     </p>
 

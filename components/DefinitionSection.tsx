@@ -163,7 +163,7 @@ export default function DefinitionSection() {
                line clears the bottom edge as the section rises. 80px was ~9vh of it on
                a laptop. The composition does not miss it — the circle is centred by the
                two 1fr rows, not by this. */
-            className="relative grid h-screen w-full grid-rows-[1fr_auto_1fr] items-start px-14 pt-10 pb-10 md:px-36 md:pt-12"
+            className="relative grid h-screen w-full grid-rows-[1fr_auto_1fr] items-start px-14 pt-10 pb-10 md:px-44 md:pt-12"
             style={{ clipPath: OPEN_TOP_CLIP }}
           >
             <Statement
