@@ -5,6 +5,8 @@ import {
   DROP_LEAD_MIN,
   DROP_MARGIN_SECONDS,
   DROP_SECONDS,
+  IMAGE_ANCHOR,
+  IMAGE_SEAM_BLEED_PX,
   PAN_SECONDS,
 } from "./timeline";
 
@@ -26,6 +28,8 @@ export type MeasureRefs = {
   footer: RefObject<HTMLDivElement | null>;
   slots: RefObject<(HTMLSpanElement | null)[]>;
   dots: RefObject<(HTMLSpanElement | null)[]>;
+  /** The three photographs above the footer's columns — see IMAGE_ANCHOR. */
+  images: RefObject<(HTMLDivElement | null)[]>;
 };
 
 /**
@@ -52,6 +56,15 @@ export type Measurements = {
   camEnd: number;
   /** Seconds into the tail at which the dots let go — solved in `measure`. */
   releaseAt: number;
+  /**
+   * How far each photograph slides for the row to close into one continuous image —
+   * horizontal only, and the panel's size is never touched.
+   *
+   * Solved from the measured boxes rather than from the grid's `gap`, so it tracks the
+   * `gap-7 / md:gap-10 / lg:gap-14` steps without any of them being named twice, and
+   * would still be right if the panels were ever sized unevenly.
+   */
+  images: ({ dx: number } | null)[];
   slots: ({ x: number; y: number; size: number } | null)[];
   dots: ({
     fromX: number;
@@ -120,6 +133,7 @@ export function createMeasure(els: MeasureEls, refs: MeasureRefs) {
     dictHeight: 0,
     camEnd: 0,
     releaseAt: PAN_SECONDS + DROP_MARGIN_SECONDS,
+    images: [],
     slots: [],
     dots: [],
   };
@@ -217,6 +231,43 @@ export function createMeasure(els: MeasureEls, refs: MeasureRefs) {
       m.camEnd = Math.min(0, Math.max(seated, -footerTop));
     } else {
       m.camEnd = 0;
+    }
+
+    // How far each photograph slides for the row to close into one continuous image.
+    //
+    // Walked outward from the anchor in both directions, accumulating widths: the
+    // left edge each panel has to reach is simply its neighbour's right edge. That
+    // states the "edges meet" condition directly rather than deriving it from the
+    // grid's gap, so it needs no breakpoint knowledge and survives unequal widths.
+    //
+    // Measured against `track` only because everything else here is — these are
+    // differences between siblings, so the origin cancels. offsetLeft is a layout
+    // value, so it reads correctly while the merge already has transforms on these
+    // elements, which matters because a refresh mid-gesture re-measures and then
+    // repaints at wherever the tail's clock has reached.
+    const panels = refs.images.current;
+    const anchor = panels[IMAGE_ANCHOR];
+    if (!anchor) {
+      m.images = panels.map(() => null);
+    } else {
+      const anchorLeft = offsetIn(anchor, track).x;
+      const targetLeft: number[] = [];
+      // Outward to the left: each panel's right edge lands on the next one's left.
+      let edge = anchorLeft;
+      for (let i = IMAGE_ANCHOR; i >= 0; i--) {
+        if (i < IMAGE_ANCHOR) edge -= panels[i]?.offsetWidth ?? 0;
+        // Tucked a hair under, so rounding cannot open a hairline at the join.
+        targetLeft[i] = edge + (i < IMAGE_ANCHOR ? IMAGE_SEAM_BLEED_PX : 0);
+      }
+      // And to the right.
+      edge = anchorLeft;
+      for (let i = IMAGE_ANCHOR + 1; i < panels.length; i++) {
+        edge += panels[i - 1]?.offsetWidth ?? 0;
+        targetLeft[i] = edge - IMAGE_SEAM_BLEED_PX;
+      }
+      m.images = panels.map((el, i) =>
+        el ? { dx: targetLeft[i] - offsetIn(el, track).x } : null,
+      );
     }
 
     // Where each dot is going. The dot element takes the slot's size, and the

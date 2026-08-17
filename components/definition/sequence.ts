@@ -24,6 +24,9 @@ import {
   LOGO_FADE_AT,
   LOGO_FADE_EASE,
   LOGO_FADE_VH,
+  IMAGE_IN,
+  IMAGE_IN_EASE,
+  IMAGE_MERGE_EASE,
   MARK_APPROACH_FRAC,
   MARK_CLEAR_PX,
   PAN_EASE,
@@ -45,6 +48,16 @@ import {
  * caller, so they are values rather than refs — the pin, the clip and every
  * measurement need them on the first frame.
  */
+/**
+ * 0 before the span, 1 after it, linear in between — the hero's `ramp` by another
+ * name, and deliberately a second copy rather than an import. Everything this section
+ * borrows from `../hero/timeline` is a *number the two must agree on*; a shared helper
+ * would be neither, and would put a change to one section's arithmetic inside the
+ * other's blast radius.
+ */
+const spanP = (v: number, [from, to]: readonly [number, number]) =>
+  gsap.utils.clamp(0, 1, (v - from) / (to - from));
+
 export type SequenceEls = {
   /** Pinned by the ScrollTrigger: one viewport, clipping the track. */
   stage: HTMLDivElement;
@@ -75,6 +88,8 @@ export type SequenceRefs = {
   footer: RefObject<HTMLDivElement | null>;
   /** The footer's rows, faded as one — see FOOTER_REVEAL_EASE. */
   reveals: RefObject<(HTMLDivElement | null)[]>;
+  /** The three photographs above the footer's columns, merged in the tail. */
+  images: RefObject<(HTMLDivElement | null)[]>;
   /** The landing pads the dots aim at. */
   slots: RefObject<(HTMLSpanElement | null)[]>;
   /** The dots themselves. */
@@ -108,6 +123,7 @@ export function createDefinitionSequence(
         mark: refs.mark,
         dictionary: refs.dictionary,
         footer: refs.footer,
+        images: refs.images,
         slots: refs.slots,
         dots: refs.dots,
       },
@@ -327,6 +343,32 @@ export function createDefinitionSequence(
       );
       for (const el of refs.reveals.current) {
         if (el) gsap.set(el, { opacity: revealP });
+      }
+
+      // --- the three photographs resolve, then close into one ---
+      //
+      // On this clock rather than the scrub, so the close is frame-locked to the
+      // fall below it — see IMAGE_IN for why that is not a shortcut. Two windows
+      // on the one clock: they come up with the camera and finish resolving
+      // before it stops, which leaves a beat where they are plainly three
+      // separate images; then the gaps close over exactly the dots' flight, so
+      // the row seals as the last dot settles.
+      //
+      // `x` is the only thing written. No scale and no opacity of its own — the
+      // panels keep their width, height and proportions for the whole gesture and
+      // simply slide until their edges meet, which is what makes the end state one
+      // continuous photograph in three panels rather than a stack. The middle one
+      // is the anchor and its `dx` is 0, so the row closes inward symmetrically
+      // and the finished image stays centred over the columns.
+      const imageInP = IMAGE_IN_EASE(spanP(t / PAN_SECONDS, IMAGE_IN));
+      const mergeP = IMAGE_MERGE_EASE(
+        gsap.utils.clamp(0, 1, (t - m.releaseAt) / DROP_SECONDS),
+      );
+      for (let i = 0; i < refs.images.current.length; i++) {
+        const el = refs.images.current[i];
+        const g = m.images[i];
+        if (!el || !g) continue;
+        gsap.set(el, { x: g.dx * mergeP, opacity: imageInP });
       }
 
 

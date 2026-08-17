@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import type { RefObject } from "react";
 import { FOOTER_DOT_SIZE } from "./dots";
 
@@ -12,6 +13,68 @@ import { FOOTER_DOT_SIZE } from "./dots";
  */
 const FOOTER_HEADING_SIZE = "clamp(19px, 1.9vw, 34px)";
 const FOOTER_BODY_SIZE = "clamp(13px, 1.1vw, 19px)";
+
+/**
+ * The three photographs above the columns, in the order they sit across the row.
+ *
+ * Filenames carry spaces, which `next/image` encodes for the optimiser — but they are
+ * a hazard worth knowing about rather than tidying silently, since renaming them would
+ * touch whatever else references them.
+ *
+ * `object-position` is per image and is doing real work: each box is a wide crop of a
+ * portrait frame (see IMAGE_ROW_H), so the subject has to be aimed at deliberately. The
+ * caviar and the hand are the point of all three, and in the first and third they sit
+ * low in the original.
+ */
+const FOOTER_IMAGES = [
+  {
+    src: "/img/caviar luxury.jpg",
+    alt: "Caviar spooned onto a guest's hand at a table",
+    position: "50% 62%",
+  },
+  {
+    src: "/img/caviar bumps.jpg",
+    alt: "Guests in black tie with caviar served on the hand, champagne in hand",
+    position: "50% 45%",
+  },
+  {
+    src: "/img/caviar luxury 2.jpg",
+    alt: "A guest tasting caviar from the back of her hand",
+    position: "50% 68%",
+  },
+];
+
+/**
+ * The image row's height, as a custom property so the merged box below can be a
+ * multiple of it rather than a second clamp restating the same arithmetic.
+ *
+ * **A height, not an aspect ratio, and that is load-bearing.** Each box is as wide as
+ * the column beneath it and all three originals are portrait, so honouring their aspect
+ * would make the row ~490px tall on a desktop. This footer has to stay inside one
+ * viewport: it is the second screen of the camera's track, `camEnd` seats its bottom
+ * edge, and anything that overflows is trimmed off the bottom — which is where the
+ * columns are, and therefore where the dots are trying to land. Fixing the height and
+ * cropping with `object-cover` bounds the row by construction at every viewport, which
+ * an aspect ratio cannot.
+ *
+ * Much shorter below `md`, because that is where the budget is tight rather than where
+ * the screen is small: the columns *stack* there, so they are three times as tall and
+ * the footer already overflows the viewport on its own. 12vh keeps this row's
+ * contribution to about 100px.
+ *
+ * 24vh on `md` and up, from 17. The binding case is not a big screen but a short one —
+ * a 1024×600 window leaves the least slack of any desktop size, and 24vh clears it with
+ * ~40px to spare while a 1440×900 has ~220px. The gain is in the crop rather than the
+ * size: at 17vh a panel was a 2.5:1 slice of a portrait original, and at 24vh it is
+ * 1.4–1.8:1 on a desktop and actually portrait on a tablet, which is what these
+ * photographs want.
+ *
+ * None of this moves the dots. Their landing slots sit at `frameH − columnsHeight −
+ * bottomPadding`, which is independent of everything above the columns — so the row can
+ * be retuned freely without touching the fall. See the note in the component below.
+ */
+const IMAGE_ROW_VAR =
+  "[--img-h:clamp(80px,12vh,160px)] md:[--img-h:clamp(120px,24vh,340px)]";
 
 const FOOTER_COLUMNS = [
   {
@@ -64,6 +127,7 @@ export default function SiteFooter({
   footerRef,
   registerReveal,
   registerSlot,
+  registerImage,
   reducedMotion,
 }: {
   footerRef: RefObject<HTMLDivElement | null>;
@@ -76,14 +140,73 @@ export default function SiteFooter({
    */
   registerReveal: (index: number, el: HTMLDivElement | null) => void;
   registerSlot: (index: number, el: HTMLSpanElement | null) => void;
+  registerImage: (index: number, el: HTMLDivElement | null) => void;
   reducedMotion: boolean;
 }) {
   return (
     <div
       ref={footerRef}
-      className={`w-full px-8 md:px-16 ${reducedMotion ? "py-24" : "py-8 md:pt-[24vh] md:pb-8"}`}
+      /* `pt` is smaller now that the image row stands in the space it used to hold
+         open. The row plus this is about what 24vh was, so the columns — and with
+         them the dots' landing slots — sit where they always did. */
+      className={`w-full px-8 md:px-16 ${IMAGE_ROW_VAR} ${reducedMotion ? "py-24" : "py-8 md:pt-[7vh] md:pb-8"}`}
     >
       <div className="mx-auto w-full max-w-7xl">
+        {/* The three photographs, directly above the dots.
+
+            Same grid as the columns below — same track count and the same gaps at
+            every breakpoint — so each box is exactly its column's width without
+            that width ever being restated. That is the whole reason this is a grid
+            rather than three absolutely-placed boxes: "as wide as its column" then
+            holds through both breakpoints and any later change to the gaps.
+
+            Three across even below `md`, where the text columns stack. A stacked
+            image row would be three full-width portraits tall, which no camera
+            window can hold, and the merge would be a vertical collapse rather than
+            the coming-together it is meant to read as.
+
+            Under reduced motion the *same* row renders at zero gap, because that
+            state is exactly the end state — three panels edge to edge making one
+            continuous image. Nothing is substituted or hidden, which is why there is
+            one branch here rather than two renderings to keep in step. */}
+        <div
+          className={`mb-6 grid grid-cols-3 md:mb-14 ${reducedMotion ? "gap-0" : "gap-7 md:gap-10 lg:gap-14"
+            }`}
+        >
+          {FOOTER_IMAGES.map((img, i) => (
+            /* `willChange` because all three carry a transform for the whole
+               gesture, and the close runs alongside three falling dots and a
+               panning camera — this is the frame budget's tightest moment.
+
+               Hidden from the first paint for the same reason the columns are:
+               the stage clips this away until the camera moves, but a restored
+               scroll position lands mid-section. Left visible under reduced
+               motion, where no clock ever runs to raise it. */
+            <div
+              key={img.src}
+              ref={(el) => registerImage(i, el)}
+              className="relative overflow-hidden"
+              style={{
+                height: "var(--img-h)",
+                opacity: reducedMotion ? 1 : 0,
+                willChange: reducedMotion ? undefined : "transform, opacity",
+              }}
+            >
+              <Image
+                src={img.src}
+                alt={img.alt}
+                fill
+                /* A third of the row at every breakpoint, since the row is
+                   `grid-cols-3` throughout — so this is honest rather than the
+                   usual `100vw` hedge. */
+                sizes="33vw"
+                className="object-cover"
+                style={{ objectPosition: img.position }}
+              />
+            </div>
+          ))}
+        </div>
+
         <div className="grid gap-7 md:grid-cols-3 md:gap-10 lg:gap-14">
           {FOOTER_COLUMNS.map((col, i) => (
             /* Hidden from the first paint rather than only from the first

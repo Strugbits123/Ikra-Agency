@@ -507,6 +507,68 @@ export const TAIL_SECONDS =
  */
 export const TAIL_BACK_SECONDS = 1.1;
 
+/**
+ * The three photographs above the footer's columns, and their merge into one.
+ *
+ * **On the tail's clock, not on the scrub**, and that is the one decision here worth
+ * defending because the brief asked for scroll progress. The merge shares a moment
+ * with the dots' fall, and mixing clocks over a shared moment is the single most
+ * expensive mistake in this codebase — the hero's orange→gray wash, its door close and
+ * this section's own wordmark slide were all the same bug. Two clocks over one moment
+ * drift apart by exactly the reader's speed, so which of the two appears to lead is
+ * decided by the wheel. On the tail's own clock the merge is frame-locked to the fall
+ * at every speed and in both directions, and a cue cannot skip or compress frames the
+ * way a scrub does when it is crossed quickly — so the speed-independence the brief
+ * actually wanted is stronger here than a scrub could give.
+ *
+ * IMAGE_IN is when the three resolve, as a fraction of the camera's pan. They come up
+ * *with* the camera and finish before it stops, which buys the beat this whole
+ * arrangement depends on: a moment where they are unmistakably three separate
+ * photographs, before anything converges. Without it the merge is over before the eye
+ * has established there was ever more than one image.
+ *
+ * The merge itself runs over exactly the dots' flight — release to last touchdown — so
+ * the photograph locks up on the frame the last dot settles. One gesture with one
+ * ending, rather than two things that happen to finish near each other.
+ *
+ * **The merge closes the gaps; it does not stack.** All three survive, none scales, and
+ * none passes over another: each keeps its width and height for the whole gesture and
+ * only slides horizontally until its edges meet its neighbours'. The end state is one
+ * continuous wide photograph made of three adjacent panels, so the travel per panel is
+ * exactly the grid's own gap — solved from the measured boxes in ./measure rather than
+ * from the gap value, so it follows the `gap-7 / md:gap-10 / lg:gap-14` steps without
+ * any of them being restated here.
+ */
+export const IMAGE_IN = [0, 0.75] as const;
+
+/**
+ * Which panel holds still, and therefore where the combined image ends up.
+ *
+ * The middle one, so the block closes inward symmetrically and its centre never moves —
+ * that is what keeps the finished photograph centred over the columns and the dots
+ * without a second constant to place it. Anchoring on an end panel instead would drag
+ * the whole block sideways as it closed.
+ */
+export const IMAGE_ANCHOR = 1;
+
+/**
+ * How far past touching each seam closes, in px.
+ *
+ * The panels have to meet *perfectly* or the join is not seamless, and merely equal
+ * edges are not enough: ScrollSmoother scrolls by fractional pixels and these are
+ * transformed boxes, so on the frame they meet, rounding can leave a hairline of footer
+ * behind them straight down the join. The same problem as the hero's door panels, and
+ * the same fix (see DOOR_PANEL_BLEED_PX) — close a hair past touching so the edges tuck
+ * instead of abutting.
+ *
+ * Not the overlap this merge is explicitly not doing: it costs one column of pixels off
+ * an outer panel and guarantees the seam.
+ */
+export const IMAGE_SEAM_BLEED_PX = 1;
+
+export const IMAGE_IN_EASE = gsap.parseEase("power2.out");
+export const IMAGE_MERGE_EASE = gsap.parseEase("power2.inOut");
+
 export const PIN_VH = TAIL_AT + TAIL_VH;
 export const SECTION_VH = PIN_VH + 100;
 

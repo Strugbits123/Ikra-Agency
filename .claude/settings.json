@@ -54,7 +54,11 @@
       "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" log --oneline -6)",
       "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" diff HEAD -- components/DefinitionSection.tsx)",
       "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" diff HEAD -- components/definition/SiteFooter.tsx)",
-      "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" diff HEAD -- components/Footer.tsx)"
+      "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" diff HEAD -- components/Footer.tsx)",
+      "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\footer-budget.mjs\")",
+      "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\seam-check.mjs\")",
+      "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" log --oneline -4)",
+      "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" diff HEAD -- .claude/settings.json)"
     ]
   }
 }

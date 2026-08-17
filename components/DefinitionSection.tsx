@@ -80,6 +80,7 @@ export default function DefinitionSection() {
   const revealRefs = useRef<(HTMLDivElement | null)[]>([]);
   const slotRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const dotRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const imageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
@@ -112,6 +113,7 @@ export default function DefinitionSection() {
         reveals: revealRefs,
         slots: slotRefs,
         dots: dotRefs,
+        images: imageRefs,
       },
     );
 
@@ -208,6 +210,9 @@ export default function DefinitionSection() {
             }}
             registerSlot={(i, el) => {
               slotRefs.current[i] = el;
+            }}
+            registerImage={(i, el) => {
+              imageRefs.current[i] = el;
             }}
             reducedMotion={reducedMotion}
           />
