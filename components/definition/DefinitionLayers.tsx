@@ -184,8 +184,15 @@ export function Composition({
           positioned siblings paint above non-positioned ones regardless
           of DOM order, so once the circle became `relative` it started
           covering this. Making both positioned restores plain tree order.
-          Deliberately no z-index — the definition must stay above this,
-          and on a phone the two do overlap. */}
+
+          Deliberately no z-index. The definition must still paint above
+          this, but that is now a backstop rather than the load-bearing
+          case it used to be: the two no longer share any horizontal band
+          at any width, since the panel's width is capped against
+          MARK_WIDTH above `lg` and below it the definition renders in
+          normal flow (see DictionaryPanel). Keep the ordering anyway —
+          it is what makes a regression there read as a stacking bug
+          rather than as silently reversed layers. */}
       <div
         ref={markRef}
         className="relative col-start-1 row-start-1"

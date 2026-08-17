@@ -1,9 +1,9 @@
 import { gsap } from "@/lib/gsap";
 import {
+  BAND_TUCK_PX,
   DOOR_PANEL_OVERHANG,
-  DOOR_PANEL_W,
-  DOOR_REST_X,
   DOOR_REST_Y,
+  doorsFor,
 } from "./doors";
 
 /**
@@ -48,8 +48,11 @@ const SAMPLES_PER_HUMP = 3;
  * amplitude and hump count are free to be tuned without reopening a gap.
  */
 export function bandGeometry(stageW: number, stageH: number) {
-  // Matches BAND_INSET, so the ribbon tucks 2px under each wedge horizontally.
-  const inset = (DOOR_PANEL_W - DOOR_REST_X) * stageW - 2;
+  // The wedges are narrower below DOOR_NARROW_MAX_W, so the inset is read from the
+  // geometry for *this* width rather than from a module constant. BandLayer places the
+  // ribbon with this same number, so the two cannot disagree.
+  const doors = doorsFor(stageW);
+  const inset = doors.wedge * stageW - BAND_TUCK_PX;
   const width = stageW - inset * 2;
 
   // The wedges' horizontal edges. The left wedge exists only *below* its top
@@ -68,7 +71,21 @@ export function bandGeometry(stageW: number, stageH: number) {
   const fontSize = thickness * 0.55;
   // Half waves across the span. Must stay a whole number — that is what puts
   // sin() at exactly zero on both ends and pins the ribbon to the wedges.
-  const humps = Math.round(gsap.utils.clamp(3, 8, width / 165));
+  //
+  // The floor drops to 2 on a narrow stage, and that is the wave's half of the phone
+  // fix. `width / 165` asks for 1.6 half-waves on a 390px phone even at the wider
+  // aperture, so a floor of 3 was forcing a third hump into a span that did not want
+  // it: 87px humps against a 44px thickness, steep enough that the amplitude clamp
+  // below (the tilt budget — glyphs rotate with the path) held the amplitude to 13px,
+  // under its own intended 15–25 band. Two humps clears that clamp, so the amplitude
+  // lands at 18.5 and the steepest glyph tilt falls from ~37° to ~24°.
+  //
+  // Above the breakpoint nothing here has moved, and by construction rather than by
+  // arithmetic: `doors.narrow` is the same predicate that picks the aperture, so every
+  // stage from 768px up keeps the floor of 3 it shipped with. Worth being exact about,
+  // because the two are *not* interchangeable — at 768px the span asks for 1.98, so a
+  // floor of 2 applied there would give 2 rather than 3.
+  const humps = Math.round(gsap.utils.clamp(doors.narrow ? 2 : 3, 8, width / 165));
 
   // Offset half a thickness inward so it is the ribbon *edges* that meet the
   // wedge corners.
@@ -127,6 +144,10 @@ export function bandGeometry(stageW: number, stageH: number) {
   return {
     inset,
     width,
+    // Carried rather than re-derived by the layers: BandLayer needs the same predicate
+    // to decide whether the closing line fits on one line, and a second `stageW <
+    // DOOR_NARROW_MAX_W` there is a second place for the breakpoint to be edited.
+    narrow: doors.narrow,
     thickness,
     fontSize,
     humps,

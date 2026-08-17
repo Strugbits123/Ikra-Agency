@@ -5,6 +5,7 @@ import Logo from "./Logo";
 import { bandGeometry } from "./hero/band";
 import BandLayer from "./hero/BandLayer";
 import { attachHeroCursor } from "./hero/cursor";
+import { doorsFor } from "./hero/doors";
 import { useBackgroundFootage } from "./hero/footage";
 import GapCopy, { gapCopyFontSize } from "./hero/GapCopy";
 import {
@@ -207,6 +208,7 @@ export default function HeroNarrative() {
             leftRef={panelLeftRef}
             rightRef={panelRightRef}
             reducedMotion={reducedMotion}
+            doors={doorsFor(stageBox.w)}
           />
 
           <ClipWindow boxRef={videoBoxRef} videoRef={clipVideoRef} />

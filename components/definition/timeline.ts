@@ -290,12 +290,33 @@ export const FADE_VH = GROW_VH / 2;
 export const DICT_AT = STATEMENT_VH;
 export const DICT_VH = 90;
 
-// The wordmark's slide out of the centre and over to the left. It has no cue of
-// its own — the move is a response to the definition arriving alongside it, so
-// the start is computed per frame from where the two actually are. MARK_LEAD_VH
-// is how far ahead of coming level it begins.
+/**
+ * The wordmark's slide out of the centre and over to the left. It has no cue of its
+ * own — the move is a response to the definition arriving alongside it, so its timing
+ * is computed per frame from where the two actually are (see the phase in ./sequence).
+ *
+ * MARK_LEAD_VH is how far ahead of the definition reaching the wordmark the slide is
+ * **finished**, and that corrected meaning is the fix for the overlap. It used to be
+ * how far ahead of it the slide *began* — 15vh of lead against a 50vh move, so the
+ * slide completed MARK_VH − MARK_LEAD_VH = 35vh *after* the definition had arrived.
+ * The wordmark was still 70% out in the middle of the frame when the words got there,
+ * and at 1024×1366 the two shared 114px of the same band with the body text painted
+ * over the logo.
+ *
+ * MARK_VH is now only the move's own *length*, and no longer decides where it lands —
+ * the contact point fixes that. So it is free to be retuned purely for feel: longer
+ * starts the slide earlier, shorter starts it later, and the landing does not move
+ * either way. At 50 the slide begins while the statement is still leaving, which is in
+ * keeping with this section running everything concurrently; drop it toward 20 if you
+ * want the wordmark to hold still until the statement is gone.
+ *
+ * MARK_CLEAR_PX is the gap the definition's top edge keeps from the wordmark's bottom
+ * edge on the frame the slide completes. In px rather than vh because it is a gap
+ * between two boxes, not a beat.
+ */
 export const MARK_LEAD_VH = 15;
 export const MARK_VH = 50;
+export const MARK_CLEAR_PX = 24;
 
 /**
  * The wordmark dissolves in place — letterforms only. The three dots are

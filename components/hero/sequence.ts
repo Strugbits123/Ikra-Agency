@@ -1,10 +1,10 @@
 import type { RefObject } from "react";
 import { gsap, ScrollTrigger } from "@/lib/gsap";
 import {
-  DOOR_REST_X,
   DOOR_REST_Y,
   DOOR_SEALED_AT,
   doorDrift,
+  doorsFor,
   holeClip,
 } from "./doors";
 import { BAND_CLOSED, BAND_FULL, BAND_UNDRAWN, bandClip } from "./band";
@@ -563,12 +563,19 @@ export function createHeroSequence(
       // Shaped rather than linear, so a panel's short edge cannot climb into frame
       // while the two are still overlapped — see doorDrift.
       const drift = doorDrift(doorNow);
+      // Read per frame off the measured width, because the panels travel further below
+      // DOOR_NARROW_MAX_W — their box is wider there by exactly the same amount, so the
+      // wedge they leave is narrower and the gap between them wider. Only the distance
+      // changes: DOOR_SEALED_AT is held across both geometries by construction (see
+      // doorsForAperture), so `doorP`, `drift` and everything keyed to them are the
+      // same numbers at every width.
+      const doors = doorsFor(W);
       gsap.set(refs.panelLeft.current, {
-        x: -doorNow * W * DOOR_REST_X,
+        x: -doorNow * W * doors.restX,
         y: drift * H * DOOR_REST_Y,
       });
       gsap.set(refs.panelRight.current, {
-        x: doorNow * W * DOOR_REST_X,
+        x: doorNow * W * doors.restX,
         y: -drift * H * DOOR_REST_Y,
       });
 

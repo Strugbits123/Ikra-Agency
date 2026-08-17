@@ -24,6 +24,7 @@ import {
   LOGO_FADE_AT,
   LOGO_FADE_EASE,
   LOGO_FADE_VH,
+  MARK_CLEAR_PX,
   MARK_LEAD_VH,
   MARK_VH,
   PAN_EASE,
@@ -215,32 +216,60 @@ export function createDefinitionSequence(
         y: gsap.utils.interpolate(H, -m.dictHeight, dictP),
       });
 
-      // --- Phase 4: the wordmark slides aside, once the definition is level
-      // with it ---
+      // --- Phase 4: the wordmark slides aside, and is *finished* doing so before
+      // the definition reaches it ---
       // Left, and barely up at all: the grid centres the composition on the
       // frame, so it starts within ~20px of its final height.
       //
-      // Its cue is the moment the definition's top edge reaches the wordmark's
-      // centre line — where the two are unmistakably side by side and the
-      // definition has not yet climbed past. Both positions are measured, so
-      // it lands correctly on any viewport; a fixed vh mark cannot, because
-      // when they come level depends on viewport height and how tall the
-      // definition renders.
+      // Two things about this were wrong together, and they are why the
+      // definition climbed across the logo.
       //
-      // MARK_LEAD_VH pulls the start ahead of that, so the wordmark is already
-      // travelling as the definition comes level. Which side it errs on
-      // matters: the definition paints above the wordmark (deliberately), so
-      // being late reads as body text sitting on the logo.
+      // The reference point was the definition's top edge drawing level with the
+      // wordmark's *centre* line, which is already half a wordmark too late: the
+      // block is wider than the space beside the letterforms, so it is on them
+      // well before its top edge is anywhere near their middle. It is now the
+      // moment that edge would first touch the wordmark's *box* at all.
+      //
+      // And the slide was timed to be merely *under way* by then rather than
+      // over — MARK_LEAD_VH pulled the start 15vh ahead of a 50vh move, so it
+      // finished 35vh late. It now lands MARK_LEAD_VH *before* contact.
+      //
+      // What actually has to hold is horizontal: the wordmark's right edge clear
+      // of the panel's left edge. That threshold is a different fraction of the
+      // slide at every width — 85% at 1024, 53% at 1440, ~0 at 1920, because the
+      // wordmark floors at 240px while the panel's edge is a percentage — so
+      // rather than track it, the slide simply finishes. `markP` is 1 before
+      // contact at every viewport, which covers all of them with margin.
       //
       // Safe to drive `x`/`y` here: the wordmark is placed by grid, not by a
       // Tailwind translate that this would overwrite.
-      const levelP = gsap.utils.clamp(
+      //
+      // Its lowest edge across the whole slide, since it drifts a little
+      // vertically too: whichever of the two positions sits further down is the
+      // one contact happens against.
+      const markBottom =
+        Math.max(m.markY, m.markY - m.markToMiddle) + m.markH;
+      // The definition's own progress when its top edge reaches that, less the
+      // clearance it keeps. Measured, so it is right on any viewport — when the
+      // two meet depends on the screen's height and on how tall the definition
+      // renders, neither of which a fixed vh mark can know.
+      const touchP = gsap.utils.clamp(
         0,
         1,
-        (H - m.markCentreY) / (H + m.dictHeight),
+        (H - markBottom - MARK_CLEAR_PX) / (H + m.dictHeight),
       );
-      const markAt = DICT_AT + levelP * DICT_VH - MARK_LEAD_VH;
-      const markP = gsap.utils.clamp(0, 1, (vh - markAt) / MARK_VH);
+      const markEnd = DICT_AT + touchP * DICT_VH - MARK_LEAD_VH;
+      // Clamped at 0 rather than left to go negative, which it does on a very
+      // short viewport: a negative start paints the wordmark already part-slid on
+      // the section's first frame. Giving up the front of the move instead keeps
+      // the landing — the half that matters — and only makes it quicker on a
+      // screen that had no room for the full length anyway.
+      const markStart = Math.max(0, markEnd - MARK_VH);
+      const markP = gsap.utils.clamp(
+        0,
+        1,
+        (vh - markStart) / Math.max(1, markEnd - markStart),
+      );
 
       // --- Phase 7: the wordmark dissolves (330 – 422vh) ---
       // In place, not away: it does not move, shrink or rise, it just stops

@@ -182,9 +182,16 @@ export default function DefinitionSection() {
             {!reducedMotion && <DictionaryPanel panelRef={dictionaryRef} />}
           </div>
 
-          {/* Mobile screens (< md): display definition in natural flow to avoid logo overlap */}
+          {/* Phones *and* tablets (< lg): the definition sits in normal flow, because
+              below `lg` the frame has no room to hold it beside the wordmark — see
+              DictionaryPanel for the measurement. It was `md:hidden`, which put the
+              travelling panel on 768–1023px viewports where its resting box overlapped
+              the wordmark's by up to 83px.
+
+              Gutters match the frame's at each breakpoint so the column does not step
+              in and out as the layout changes around it. */}
           {!reducedMotion && (
-            <DictionaryInFlow className="block px-8 py-12 md:hidden" />
+            <DictionaryInFlow className="block px-14 py-12 md:px-36 lg:hidden" />
           )}
 
           {/* Reduced motion: follows the composition in normal flow */}

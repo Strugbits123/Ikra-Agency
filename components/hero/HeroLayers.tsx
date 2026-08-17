@@ -6,9 +6,8 @@ import type { RefObject } from "react";
 import {
   DOOR_PANEL_BLEED_PX,
   DOOR_PANEL_OVERHANG,
-  DOOR_PANEL_W,
-  DOOR_REST_X,
   DOOR_REST_Y,
+  type DoorGeometry,
   holeClip,
 } from "./doors";
 
@@ -17,12 +16,17 @@ import {
  * its own short edge, and DOOR_PANEL_BLEED_PX wider than its share so the two overlap
  * rather than merely meet when the doors seal. Both come from ./doors, because the
  * ribbon's anchors are measured against the same overhang.
+ *
+ * A function of the geometry rather than a constant, because the panels are *wider*
+ * below DOOR_NARROW_MAX_W — that is what lets them travel further and still seal (see
+ * doorsForAperture). The width and the travel have to come from the same geometry or
+ * the wedge they leave is the wrong size.
  */
-const PANEL_BOX = {
+const panelBox = (doors: DoorGeometry) => ({
   top: `${-DOOR_PANEL_OVERHANG * 100}%`,
   height: `${(1 + 2 * DOOR_PANEL_OVERHANG) * 100}%`,
-  width: `calc(${DOOR_PANEL_W * 100}% + ${DOOR_PANEL_BLEED_PX}px)`,
-};
+  width: `calc(${(doors.panelW * 100).toFixed(4)}% + ${DOOR_PANEL_BLEED_PX}px)`,
+});
 
 /**
  * The static layers of the pinned stage, in paint order: the backdrop, the two
@@ -92,20 +96,24 @@ export function DoorPanels({
   leftRef,
   rightRef,
   reducedMotion,
+  doors,
 }: {
   leftRef: RefObject<HTMLDivElement | null>;
   rightRef: RefObject<HTMLDivElement | null>;
   reducedMotion: boolean;
+  /** For this stage's width — see doorsFor. The travel in ./sequence reads the same. */
+  doors: DoorGeometry;
 }) {
+  const box = panelBox(doors);
   return (
     <>
       <div
         ref={leftRef}
         className="absolute left-0 z-10 bg-accent"
         style={{
-          ...PANEL_BOX,
+          ...box,
           transform: reducedMotion
-            ? `translate(${-DOOR_REST_X * 100}vw, ${DOOR_REST_Y * 100}vh)`
+            ? `translate(${-doors.restX * 100}vw, ${DOOR_REST_Y * 100}vh)`
             : undefined,
         }}
       />
@@ -113,9 +121,9 @@ export function DoorPanels({
         ref={rightRef}
         className="absolute right-0 z-10 bg-accent"
         style={{
-          ...PANEL_BOX,
+          ...box,
           transform: reducedMotion
-            ? `translate(${DOOR_REST_X * 100}vw, ${-DOOR_REST_Y * 100}vh)`
+            ? `translate(${doors.restX * 100}vw, ${-DOOR_REST_Y * 100}vh)`
             : undefined,
         }}
       />

@@ -2,6 +2,7 @@
 
 import type { RefObject } from "react";
 import { useRevealOnView } from "@/lib/useRevealOnView";
+import { MARK_WIDTH } from "./dots";
 
 /**
  * The dictionary entry, and the two ways it is presented.
@@ -64,12 +65,51 @@ const DICTIONARY_CONTENT = (
 );
 
 /**
+ * The frame's own horizontal padding at the widths this panel is shown at, and the gap
+ * it must leave beside the wordmark — both in px, because the panel's width is solved
+ * against them below.
+ *
+ * PANEL_PAD_PX has to track the frame's `lg:px-36` in DefinitionSection. It is the one
+ * figure here that is copied rather than derived, so there is an assertion on it in
+ * ./measure that fires if the two drift apart.
+ */
+const PANEL_PAD_PX = 144;
+const PANEL_GUTTER_PX = 32;
+
+/**
  * The travelling panel — inside the pinned frame so its upward climb can be driven
  * against scroll rather than happening at page speed.
  *
  * Anchored at `top-0` with no vertical centring: GSAP drives `y` here, which
  * rewrites the whole transform, so a Tailwind `-translate-y-1/2` would be wiped the
  * instant the first frame ran.
+ *
+ * ## Why the width is solved and why this starts at `lg`
+ *
+ * The panel and the wordmark are the two halves of the settled composition, and they
+ * used to collide — not by arriving at the wrong time, which the wordmark's lead
+ * already handles (see MARK_LEAD_VH), but because their *resting boxes* overlapped.
+ * With the wordmark fully slid hard-left the two still shared up to 83px of the same
+ * horizontal band, so no amount of timing could separate them.
+ *
+ * They collided because they scale by different laws. MARK_WIDTH has a 240px floor,
+ * which governs everything below ~828px, while this panel's left edge is
+ * `100% − right − 42%` and keeps marching left as the viewport narrows. Measured
+ * clearance was negative at every width under 993px and under 32px up to ~1100.
+ *
+ * Two things follow, and they fix different bands:
+ *
+ *  - **The width is capped against the wordmark**, not just at 42%/35rem. That turns
+ *    9px of clearance at 1024 and 31px at 1100 into a guaranteed PANEL_GUTTER_PX. The
+ *    cap stops binding at ~1102px, so every width from `xl` up is untouched — 42% or
+ *    the 35rem ceiling still governs there, exactly as before.
+ *  - **It starts at `lg`, not `md`.** Below that the room genuinely is not there
+ *    rather than merely badly divided: 288px of a 768px frame is padding and the
+ *    wordmark floors at 240px, which leaves 208px for this — five wrapped lines of a
+ *    34px heading, which is worse than the overlap it would fix. So the tablet band
+ *    joins the phone in taking the in-flow rendering below, which is the mechanism
+ *    this codebase already chose for this exact condition; only the width it was
+ *    thought to hold at was wrong.
  */
 export function DictionaryPanel({
   panelRef,
@@ -79,7 +119,12 @@ export function DictionaryPanel({
   return (
     <div
       ref={panelRef}
-      className="pointer-events-none absolute top-0 hidden md:block md:right-36 md:w-[42%] md:max-w-140"
+      // `max-w-140` stays a class so the 35rem ceiling lives in one place — a
+      // max-width still clamps an inline width.
+      className="pointer-events-none absolute top-0 hidden lg:block lg:right-36 lg:max-w-140"
+      style={{
+        width: `min(42%, calc(100% - ${2 * PANEL_PAD_PX + PANEL_GUTTER_PX}px - ${MARK_WIDTH}))`,
+      }}
     >
       {DICTIONARY_CONTENT}
     </div>

@@ -39,7 +39,14 @@
       "Bash(sed -i 's/const STOPS_UP = .*/const STOPS_UP = [410, 404, 402, 400, 399, 398, 397, 396, 394, 392];/' probe.mjs)",
       "Bash(node transient.mjs)",
       "Bash(sed -i 's|export const CLOSE_VH_FIXED = \\(OPEN_VH \\\\* CLOSE_SECONDS\\) / OPEN_SECONDS;|export const CLOSE_VH_FIXED = 25;|' closesim.mjs)",
-      "Bash(sed -i 's/^const GRAY_TAIL_VH = 1;/const GRAY_TAIL_VH = 20;/' closesim.mjs)"
+      "Bash(sed -i 's/^const GRAY_TAIL_VH = 1;/const GRAY_TAIL_VH = 20;/' closesim.mjs)",
+      "PowerShell(npx tsc --noEmit)",
+      "PowerShell(npm run build 2>&1)",
+      "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\doors-check.mjs\")",
+      "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\doors-check.mjs\" 2>&1)",
+      "PowerShell(npm run lint 2>&1)",
+      "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\dict-overlap.mjs\")",
+      "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\mark-timing.mjs\")"
     ]
   }
 }

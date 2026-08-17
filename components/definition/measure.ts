@@ -159,7 +159,43 @@ export function createMeasure(els: MeasureEls, refs: MeasureRefs) {
 
     // So the definition's travel can end with the whole block clear of the
     // top rather than at a guessed offset.
-    m.dictHeight = refs.dictionary.current?.offsetHeight ?? 0;
+    const dict = refs.dictionary.current;
+    m.dictHeight = dict?.offsetHeight ?? 0;
+
+    // The settled composition's one hard geometric requirement: the panel's resting
+    // box has to clear the wordmark's. Asserted on the measured boxes rather than on
+    // the constants they were solved from, which makes this the real property and not
+    // a proxy for it — a change to the frame's padding, to MARK_WIDTH, or to the
+    // panel's own width all show up here, and they move one box without the other
+    // because the two scale by different laws (see DictionaryPanel).
+    //
+    // `offsetWidth > 0` is the visibility gate: below `lg` the panel is `hidden` and
+    // the definition renders in normal flow instead, where there is nothing to clear.
+    // offsetLeft is a layout value, so this reads correctly mid-flight with GSAP's `y`
+    // on the element.
+    if (
+      process.env.NODE_ENV !== "production" &&
+      dict &&
+      dict.offsetWidth > 0
+    ) {
+      const clearance = offsetIn(dict, frame).x - (padLeft + m.markW);
+      if (clearance < 0) {
+        console.error(
+          "[DefinitionSection] the definition's resting box overlaps the wordmark's " +
+          `by ${(-clearance).toFixed(0)}px, so the words will climb across the logo ` +
+          "however the two are timed — the wordmark's lead can only separate them in " +
+          "time, not in space. Narrow the panel against MARK_WIDTH, widen the frame, " +
+          "or move the panel's breakpoint up so this width takes the in-flow " +
+          "rendering. See DictionaryPanel.",
+          {
+            panelLeft: offsetIn(dict, frame).x,
+            markRestRight: padLeft + m.markW,
+            markW: m.markW,
+            padLeft,
+          },
+        );
+      }
+    }
 
     // How far the camera travels: enough to bring the footer's bottom edge
     // onto the viewport's. Measured rather than "one viewport" so the footer
