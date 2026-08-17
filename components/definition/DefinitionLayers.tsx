@@ -11,6 +11,15 @@ import { STATEMENT_LIFT_VH, VEIL_OVERHANG_PX, VEIL_VH } from "./timeline";
  */
 
 /**
+ * The round window's resting diameter — written once and used for both axes, since a
+ * circle whose width and height could drift apart is an ellipse waiting to happen.
+ *
+ * Term for term MARK_WIDTH's, scaled by 19/29 so the wordmark's 1.5× overhang holds at
+ * every width including through the crowding cap. See the Composition docblock.
+ */
+const CIRCLE_SIZE = "max(160px, min(19vw, 35vh, 340px, 38vw - 262px))";
+
+/**
  * The veil: a slab of this section's own gray reaching VEIL_VH *above* its top
  * edge, so it blankets the whole viewport for the entire hand-off out of the hero.
  * Its opacity is scrubbed by `veilTrigger`; flat gray, not a gradient, so the
@@ -112,6 +121,12 @@ export function Statement({
  * on a short one, which is what keeps the no-overlap guarantee honest; the floor
  * stops the vw term collapsing them below 100px on a phone.
  *
+ * The last term of each is the crowding cap, and it is why they carry a fourth term at
+ * all — see MARK_WIDTH. `38vw - 262px` is exactly `58vw - 400px` scaled by 19/29, so
+ * the disc gives way by the same proportion the wordmark does and the 1.5× below holds
+ * *through* the squeeze. Without it the wordmark would shrink onto the disc around
+ * 1180px and the overhang either side would drop from ~24% of the circle to ~13%.
+ *
  * The wordmark stays a consistent 1.5× the circle at every breakpoint, because the
  * overhang either side of the disc is the composition rather than a coincidence. The
  * resting size is genuinely free to change: `baseSize` is read from the computed
@@ -140,10 +155,7 @@ export function Composition({
         ref={circleRef}
         aria-hidden
         className="relative col-start-1 row-start-1 overflow-hidden rounded-full"
-        style={{
-          width: "max(160px, min(19vw, 35vh, 340px))",
-          height: "max(160px, min(19vw, 35vh, 340px))",
-        }}
+        style={{ width: CIRCLE_SIZE, height: CIRCLE_SIZE }}
       >
         {/* Deliberately NOT sized to the circle: it is a full-bleed
             viewport-cover layer, and the circle is only a window onto it.

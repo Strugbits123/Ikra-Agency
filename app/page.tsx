@@ -7,7 +7,7 @@ export default function Home() {
     <main>
       <HeroNarrative />
       <DefinitionSection />
-      {/* <Footer /> */}
+      <Footer />
     </main>
   );
 }

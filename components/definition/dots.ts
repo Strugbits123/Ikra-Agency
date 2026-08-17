@@ -30,8 +30,29 @@ export const LOGO_DOTS = [
  * Shared because the footer's dots are derived from it (below): the dot that lands
  * in the footer is the same dot that left the wordmark, so its size cannot be an
  * independent choice at the other end.
+ *
+ * ## The last term is the crowding cap
+ *
+ * The first three terms make the wordmark big on a wide screen, stop it growing into
+ * the statement on a short one, and stop the vw term collapsing it on a phone. None of
+ * them knows about the definition that sits beside it from `lg` up, and that is what
+ * `58vw - 400px` is for: past `lg` the wordmark and the panel share one row, and the
+ * wordmark was growing at 29vw into a share that grows at only 58vw − (the frame's
+ * padding and the gap), so the two closed on each other as the screen narrowed toward
+ * 1024. The cap is what makes the wordmark give first.
+ *
+ * Linear and un-breakpointed on purpose: a media query would step the wordmark's size
+ * on one pixel of resize, and this is a size, not a beat. What it costs is that a
+ * linear cap crossing the floor at ~1103px also holds the wordmark at 240px from
+ * ~828px up rather than letting it grow — a ~7% smaller wordmark on a tablet, where
+ * the definition is in normal flow and the crowding does not exist. That is the price
+ * of no seam; it is small, and it errs toward the roomier layout.
+ *
+ * Unchanged from 1440px up, where the 29vw term governs again. The circle in
+ * ./DefinitionLayers carries the same cap scaled by 19/29, so the composition's 1.5×
+ * proportion survives the squeeze rather than the wordmark tucking into the disc.
  */
-export const MARK_WIDTH = "max(240px, min(29vw, 53vh, 520px))";
+export const MARK_WIDTH = "max(240px, min(29vw, 53vh, 520px, 58vw - 400px))";
 
 /**
  * The footer dot, and therefore the size each falling dot settles at — which is

@@ -24,9 +24,8 @@ import {
   LOGO_FADE_AT,
   LOGO_FADE_EASE,
   LOGO_FADE_VH,
+  MARK_APPROACH_FRAC,
   MARK_CLEAR_PX,
-  MARK_LEAD_VH,
-  MARK_VH,
   PAN_EASE,
   PAN_SECONDS,
   PIN_VH,
@@ -230,16 +229,28 @@ export function createDefinitionSequence(
       // well before its top edge is anywhere near their middle. It is now the
       // moment that edge would first touch the wordmark's *box* at all.
       //
-      // And the slide was timed to be merely *under way* by then rather than
-      // over — MARK_LEAD_VH pulled the start 15vh ahead of a 50vh move, so it
-      // finished 35vh late. It now lands MARK_LEAD_VH *before* contact.
+      // And the slide had a window in vh, which is the deeper fault — a window
+      // cannot know where the definition is, and that is the only thing this move
+      // is about. Anchored to its near end it finished 35vh after the definition
+      // arrived; re-anchored to its far end it opened at ~48vh against a
+      // definition that does not start climbing until 50, so the wordmark drifted
+      // off centre with nothing on screen to explain it. Same fault twice.
+      //
+      // So it is driven off the *gap between the two* instead. `markP` is the
+      // definition's own approach, measured from where it clears the bottom of the
+      // screen to where it touches the wordmark, and the slide is spread over the
+      // last MARK_APPROACH_FRAC of it. Three things come out of that shape at once:
+      // it cannot start before the definition does (at dictP 0 the numerator is
+      // negative), it lands exactly as the definition arrives at every viewport,
+      // and how far off the wordmark reacts from is one legible fraction rather
+      // than a vh figure that has to be re-derived whenever anything above it
+      // moves.
       //
       // What actually has to hold is horizontal: the wordmark's right edge clear
       // of the panel's left edge. That threshold is a different fraction of the
-      // slide at every width — 85% at 1024, 53% at 1440, ~0 at 1920, because the
+      // slide at every width — 72% at 1024, 53% at 1440, ~0 at 1920, because the
       // wordmark floors at 240px while the panel's edge is a percentage — so
-      // rather than track it, the slide simply finishes. `markP` is 1 before
-      // contact at every viewport, which covers all of them with margin.
+      // rather than track it, the slide simply finishes.
       //
       // Safe to drive `x`/`y` here: the wordmark is placed by grid, not by a
       // Tailwind translate that this would overwrite.
@@ -258,18 +269,10 @@ export function createDefinitionSequence(
         1,
         (H - markBottom - MARK_CLEAR_PX) / (H + m.dictHeight),
       );
-      const markEnd = DICT_AT + touchP * DICT_VH - MARK_LEAD_VH;
-      // Clamped at 0 rather than left to go negative, which it does on a very
-      // short viewport: a negative start paints the wordmark already part-slid on
-      // the section's first frame. Giving up the front of the move instead keeps
-      // the landing — the half that matters — and only makes it quicker on a
-      // screen that had no room for the full length anyway.
-      const markStart = Math.max(0, markEnd - MARK_VH);
-      const markP = gsap.utils.clamp(
-        0,
-        1,
-        (vh - markStart) / Math.max(1, markEnd - markStart),
-      );
+      // The stretch of that approach the slide occupies, guarded against a zero
+      // span on a viewport where the two are already in contact at dictP 0.
+      const markSpan = Math.max(1e-4, touchP * MARK_APPROACH_FRAC);
+      const markP = gsap.utils.clamp(0, 1, (dictP - (touchP - markSpan)) / markSpan);
 
       // --- Phase 7: the wordmark dissolves (330 – 422vh) ---
       // In place, not away: it does not move, shrink or rise, it just stops

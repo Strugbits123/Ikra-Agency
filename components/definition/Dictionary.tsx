@@ -74,7 +74,17 @@ const DICTIONARY_CONTENT = (
  * ./measure that fires if the two drift apart.
  */
 const PANEL_PAD_PX = 144;
-const PANEL_GUTTER_PX = 32;
+/**
+ * The clear gap between the wordmark's resting right edge and this panel's left edge.
+ *
+ * 96, up from 32 and then 64. 32 was sized as a "not touching" margin, which is the
+ * wrong thing to size — what the composition wants is a gutter wide enough that the two
+ * halves read as two things placed beside each other rather than one block that has
+ * been split. Below about 1100px this is the figure that governs the panel's width
+ * (above it the 42% term does), so it is also the knob for how much of the row the
+ * definition gets there: at 1024 the column is 400px against 96px of gutter.
+ */
+const PANEL_GUTTER_PX = 96;
 
 /**
  * The travelling panel — inside the pinned frame so its upward climb can be driven
@@ -88,7 +98,7 @@ const PANEL_GUTTER_PX = 32;
  *
  * The panel and the wordmark are the two halves of the settled composition, and they
  * used to collide — not by arriving at the wrong time, which the wordmark's lead
- * already handles (see MARK_LEAD_VH), but because their *resting boxes* overlapped.
+ * already handles (see MARK_APPROACH_FRAC), but because their *resting boxes* overlapped.
  * With the wordmark fully slid hard-left the two still shared up to 83px of the same
  * horizontal band, so no amount of timing could separate them.
  *

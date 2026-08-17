@@ -38,11 +38,11 @@ import { CLOSE_VH, HERO_GRAY_TAIL_VH } from "../hero/timeline";
  *             dissolving rather than a full-bleed frame that arrives and sits.
  *   measured  the wordmark slides left into the final composition, clearing the
  *             right half for the definition. The only phase with no vh window of
- *             its own: it is cued off the definition's *position*, starting
- *             MARK_LEAD_VH before the definition's top edge reaches the
- *             wordmark's centre line. That lands around 105vh on a 16:9 desktop
- *             and closer to 70vh on a short viewport, which is why it is not a
- *             constant.
+ *             its own, and it must stay that way: it is driven off the definition's
+ *             *position*, spread over the last MARK_APPROACH_FRAC of that block's
+ *             run at it and finishing as it arrives. Lands around 62–66vh, later
+ *             on a tall viewport, which is why it is not a constant. See
+ *             MARK_APPROACH_FRAC for the two vh-window versions that failed.
  *   50–220vh  the definition travels up the right-hand side, from below the fold
  *             to clear off the top. No fade — a pure move, and the window still
  *             being longer than the distance is what keeps it from rushing —
@@ -280,8 +280,8 @@ export const FADE_VH = GROW_VH / 2;
  * now overlaps its last 15% (LOGO_FADE_FRAC), so the stretch from the statement
  * leaving to the dots letting go is 145vh rather than 280.
  *
- * Shortening it squeezes the composition as well, since the wordmark's cue is
- * measured against this window — see MARK_LEAD_VH. The settled side-by-side beat
+ * Shortening it squeezes the composition as well, since the wordmark's slide is
+ * measured against this window — see MARK_APPROACH_FRAC. The settled side-by-side beat
  * runs 25–47vh at this length depending on the viewport, against 60–75 before,
  * and that is the real cost — it is why this is not shorter still. The narrow end
  * of that range is a tall desktop, where the definition is short relative to the
@@ -295,27 +295,38 @@ export const DICT_VH = 90;
  * own — the move is a response to the definition arriving alongside it, so its timing
  * is computed per frame from where the two actually are (see the phase in ./sequence).
  *
- * MARK_LEAD_VH is how far ahead of the definition reaching the wordmark the slide is
- * **finished**, and that corrected meaning is the fix for the overlap. It used to be
- * how far ahead of it the slide *began* — 15vh of lead against a 50vh move, so the
- * slide completed MARK_VH − MARK_LEAD_VH = 35vh *after* the definition had arrived.
- * The wordmark was still 70% out in the middle of the frame when the words got there,
- * and at 1024×1366 the two shared 114px of the same band with the body text painted
- * over the logo.
+ * **It has no window in vh, and it must not be given one.** The move is a response to
+ * the definition coming up at it, so it is driven off the *gap between the two* rather
+ * than off the clock — see the phase in ./sequence. That is the whole of what these two
+ * constants say, and both are shaped so no arithmetic can put the slide before the
+ * thing it is responding to.
  *
- * MARK_VH is now only the move's own *length*, and no longer decides where it lands —
- * the contact point fixes that. So it is free to be retuned purely for feel: longer
- * starts the slide earlier, shorter starts it later, and the landing does not move
- * either way. At 50 the slide begins while the statement is still leaving, which is in
- * keeping with this section running everything concurrently; drop it toward 20 if you
- * want the wordmark to hold still until the statement is gone.
+ * Two vh-window versions came before it and each failed at one end. The first started
+ * the slide MARK_LEAD_VH (15vh) before the two came level and ran it for MARK_VH
+ * (50vh), so it *finished* 35vh after the definition had arrived — the wordmark was
+ * still 70% out in the middle of the frame with the body text painted over it, which
+ * at 1024×1366 was 114px of shared band. Anchoring the same window to the far end
+ * instead fixed the landing and broke the opening: the slide then began at ~48vh
+ * against a definition that does not start climbing until 50, so the wordmark drifted
+ * off centre with nothing on screen to explain it.
+ *
+ * Both are the same fault. A window in vh cannot know where the definition is, and
+ * "when the wordmark should move" is a question about exactly that. The definition's
+ * own progress can be read directly, so it is.
+ *
+ * MARK_APPROACH_FRAC is the share of the definition's run at the wordmark — from
+ * clearing the bottom of the screen to touching it — that the slide is spread over. At
+ * 0.5 the wordmark holds still for the first half of the climb and then moves aside
+ * over the second, finishing exactly as the definition arrives. Raise it and the
+ * wordmark reacts from further away; lower it and it leaves the move later and
+ * quicker. It cannot be raised into trouble: at 1 the slide starts on the frame the
+ * definition does, never before.
  *
  * MARK_CLEAR_PX is the gap the definition's top edge keeps from the wordmark's bottom
  * edge on the frame the slide completes. In px rather than vh because it is a gap
  * between two boxes, not a beat.
  */
-export const MARK_LEAD_VH = 15;
-export const MARK_VH = 50;
+export const MARK_APPROACH_FRAC = 0.5;
 export const MARK_CLEAR_PX = 24;
 
 /**
