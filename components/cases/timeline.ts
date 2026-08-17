@@ -191,13 +191,21 @@ if (process.env.NODE_ENV !== "production") {
 
   // The cap must not bind at the reference's own aspect ratio, or the layout stops matching
   // the recording at the very viewport it was measured from — see IMAGE_MAX_VH.
+  //
+  // The image resolves to `min(IMAGE_VW vw, IMAGE_MAX_VH · IMAGE_ASPECT vh)`, so the vw term
+  // wins — which is what was measured — while
+  //
+  //     IMAGE_VW · (W / H) ≤ IMAGE_MAX_VH · IMAGE_ASPECT
+  //
+  // and the cap binds below that. The floor is derived rather than stated so it stays true if
+  // the cell's padding or the image's aspect is ever retuned.
   const REFERENCE_ASPECT = 1905 / 947;
-  if (IMAGE_MAX_VH * IMAGE_ASPECT / 100 <= IMAGE_VW / 100 * REFERENCE_ASPECT) {
-    // fine: 42vw wins at the reference, which is what was measured
-  } else {
+  const capFloorVh = (IMAGE_VW * REFERENCE_ASPECT) / IMAGE_ASPECT;
+  if (IMAGE_MAX_VH < capFloorVh) {
     console.error(
       `[CaseStudies] IMAGE_MAX_VH=${IMAGE_MAX_VH} binds at the reference's 1905×947, so the ` +
-      "image is narrower than the 801px measured there. Raise it above 58.3.",
+      `image is narrower than the ${(IMAGE_VW / 100) * 1905} px measured there. Raise it ` +
+      `above ${capFloorVh.toFixed(1)}.`,
     );
   }
 
