@@ -58,7 +58,19 @@
       "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\footer-budget.mjs\")",
       "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\seam-check.mjs\")",
       "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" log --oneline -4)",
-      "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" diff HEAD -- .claude/settings.json)"
+      "PowerShell(git -C \"d:\\\\tanzeel\\\\Ikra-Agency\" diff HEAD -- .claude/settings.json)",
+      "PowerShell(Get-ChildItem -Path \"d:\\\\tanzeel\\\\Ikra-Agency\\\\public\" -Recurse -File | Sort-Object DirectoryName, Name | Select-Object @{n='path';e={$_.FullName.Replace\\('d:\\\\tanzeel\\\\Ikra-Agency\\\\public',''\\).Replace\\('\\\\','/'\\)}}, @{n='KB';e={[int]\\($_.Length/1KB\\)}}, @{n='modified';e={$_.LastWriteTime.ToString\\('MM-dd HH:mm'\\)}} | Format-Table -AutoSize)",
+      "WebFetch(domain:trionn.com)",
+      "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\cases-sim.mjs\")",
+      "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\cases-v2-sim.mjs\")",
+      "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\cases-v2-sim.mjs\" 2>&1)",
+      "PowerShell(node \"C:\\\\Users\\\\Tanzeel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tanzeel-Ikra-Agency\\\\d75866c2-e6f2-4523-a529-7287fab511e7\\\\scratchpad\\\\cases-v3-sim.mjs\")",
+      "Bash(node cases-h-sim.mjs)",
+      "Bash(ffprobe -v error -show_entries format=duration,size -show_entries stream=width,height,r_frame_rate,nb_frames,codec_name -of default=noprint_wrappers=1 \"C:/Users/Tanzeel/Videos/Captures/TRIONN _ AI-Powered Creative Design & Development Studio in India - Google Chrome 2026-08-17 20-08-05.mp4\")",
+      "Bash(node cases-vs-video.mjs)"
+    ],
+    "additionalDirectories": [
+      "d:\\tanzeel\\ikra-backups\\case-studies-v1-stack"
     ]
   }
 }
