@@ -40,8 +40,10 @@ export const APPROACH_COLLECTION = "Approach";
 
 /**
  * The collection behind the copy at the top of `/about` — the paragraphs that climb the screen
- * over the footage. Same permissions again, and one row rather than one per paragraph: the
- * blank-line convention separates them inside a single field (see `wixParagraphs`).
+ * over the footage, and the footnote under their rule. Same permissions again, and **one row
+ * with two fields** rather than a row per paragraph: `body` takes the prose with the blank-line
+ * convention between paragraphs (`wixParagraphs`), `note` the footnote with one line per line
+ * (`wixLines`).
  *
  * The one collection here whose section keeps its copy in the repo as well, and
  * `components/playground/content.ts` says why.
