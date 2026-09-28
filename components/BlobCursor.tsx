@@ -26,23 +26,41 @@ import { createPortal } from "react-dom";
  * That was reported, and no choice of blob colour fixes it — any light element differenced
  * against a warm ground lands in the cyans. Taking the greyscale *first* throws the hue away
  * before the inversion can act on it, so the blob is only ever white, grey or black.
- * Measured off the running page, against a flat swatch of each, every one at a channel
- * spread of exactly 0:
  *
- *     bg-black  #000000 -> #ffffff    bg-cream  #fef5f3 -> #080808
- *     bg-gray   #dfdfdf -> #202020    footer    #484848 -> #b7b7b7
- *     text-ink  #390303 -> #f1f1f1    navy      #0e3159 -> #d3d3d3
- *     bg-accent #fa5e3c -> #828282
+ * **The `brightness(2)` on the end is what keeps it off grey, and the hero's doors are the
+ * surface it exists for.** A plain inversion has a blind spot wherever the ground's own
+ * greyscale is mid, because there the inverse is mid too — measured across a 26-step neutral
+ * ramp, the plain filter's worst case is a ground of 130 against a blob of 125, a contrast of
+ * **1.07:1**. `bg-accent` is greyscale **125**, i.e. sitting in that blind spot almost exactly,
+ * which is why the blob read as a grey smudge on the orange doors and was reported as one.
+ * Doubling after the inversion lifts everything the inversion left dark-ish and leaves
+ * everything it left dark alone, because a small number doubled is still small. Measured off
+ * a rendered swatch of each surface, before -> after:
  *
- * **`bg-accent` is the surface to look at first if this is ever retuned.** Its greyscale
- * value is 125 of 255, i.e. almost exactly mid, so the inversion hands back 130 — a blob
- * and a ground at practically the same *luminance*. It reads clearly all the same, because
- * a neutral grey against a fully saturated orange separates on chroma rather than on
- * brightness, and that is the whole of its margin there. A future ground that is both
- * mid-luminance and desaturated would have no margin at all and would need something else.
+ *     bg-accent #fa5e3c   130 -> 255   1.23:1 -> 3.12:1     the doors, the wave, the rail
+ *     bg-ember  #e74b2f   149 -> 255   1.29:1 -> 3.86:1
+ *     mid-grey  #808080   127 -> 254   1.01:1 -> 3.92:1     any mid-tone photograph
+ *     footer    #484848   183 -> 255   4.56:1 -> 9.15:1
+ *     navy      #0e3159   211 -> 255   8.76:1 -> 13.11:1
+ *     text-ink  #390303   241 -> 255  15.65:1 -> 17.67:1
+ *     bg-black  #000000   255 -> 255  21.00:1 -> 21.00:1
+ *     bg-gray   #dfdfdf    32 ->  64  12.23:1 -> 7.78:1     still black on a light ground
+ *     cases end #cfcece    49 ->  98   8.28:1 -> 3.88:1
+ *     bg-paper  #f7f7f7     8 ->  16  18.69:1 -> 17.76:1
+ *     bg-cream  #fef5f3     8 ->  16  18.66:1 -> 17.73:1
+ *
+ * **What this does not do is remove the blind spot — it moves it**, from a ground of 130 to a
+ * ground of **170**, measured on the same ramp. That is the trade, and it is worth taking here
+ * because no flat surface in this palette is anywhere near 170 (the nearest are `casesEnd` at
+ * 207 and `footer` at 72) while one of the most-crossed surfaces on the site was sitting inside
+ * the old one. **If a new ground lands near greyscale 170, this is the number to re-check**,
+ * and the answer then is a different multiplier rather than a blob colour. Nothing gets worse
+ * than 3.88:1 anywhere, against 1.01:1 before.
  *
  * It is also why the background below is `transparent` rather than a colour: an opaque fill
- * would hide the filtered backdrop entirely, which is the whole effect.
+ * would hide the filtered backdrop entirely, which is the whole effect. A blob that is simply
+ * *white* is the obvious thing to reach for instead and is the one thing that cannot work: it
+ * would vanish on cream, paper, white and `bg-gray`, which is most of the site below the hero.
  *
  * **It portals to `document.body`.** `position: fixed` does not work inside
  * `#smooth-content`: ScrollSmoother's transform on that element makes it the containing
@@ -109,12 +127,14 @@ const REST_RADIUS = "43% 57% 52% 48% / 45% 55% 45% 55%";
 const PARKED = `translate3d(-${SIZE * 4}px, -${SIZE * 4}px, 0)`;
 
 /**
- * Greyscale first, then invert. The order does not change the result — inverting each
- * channel and then taking a weighted sum gives the same number as taking the sum and
- * inverting it — but written this way it says what it is for: the hue is discarded, and
- * only the brightness is turned over.
+ * Greyscale first, then invert, then lift. The first two do not depend on their order —
+ * inverting each channel and then taking a weighted sum gives the same number as taking the
+ * sum and inverting it — but written this way it says what it is for: the hue is discarded,
+ * and only the brightness is turned over. The `brightness` **must** come last, since it is
+ * what pulls the inverted mid-tones up off grey; ahead of the invert it would push them down
+ * instead. See the head of this file for the measured before-and-after on every surface.
  */
-const INVERSION = "grayscale(1) invert(1)";
+const INVERSION = "grayscale(1) invert(1) brightness(2)";
 
 /**
  * The blob is drawn entirely by `backdrop-filter`, so a browser without it renders nothing

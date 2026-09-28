@@ -3,11 +3,7 @@
 import Link from "next/link";
 import type { CSSProperties, RefObject } from "react";
 import Logo from "../Logo";
-import {
-  PLAYGROUND_COPY,
-  PLAYGROUND_DESCRIPTOR,
-  PLAYGROUND_NOTE,
-} from "./content";
+import { PLAYGROUND_DESCRIPTOR } from "./content";
 import {
   BODY,
   BODY_LEADING,
@@ -176,10 +172,16 @@ export function PlaygroundHeader({
  */
 export function PlaygroundCopy({
   copyRef,
+  copy,
+  note,
   centred,
   narrow,
 }: {
   copyRef: RefObject<HTMLDivElement | null>;
+  /** The paragraphs, out of the CMS by way of the page — see `aboutIntroFromWix`. */
+  copy: readonly string[];
+  /** The footnote's lines, from the same row. The rule between them is the layout's. */
+  note: readonly string[];
   centred: boolean;
   narrow: boolean;
 }) {
@@ -198,7 +200,7 @@ export function PlaygroundCopy({
         } as CSSProperties
       }
     >
-      {PLAYGROUND_COPY.map((para, i) => (
+      {copy.map((para, i) => (
         <p
           key={para.slice(0, 24)}
           style={i === 0 ? undefined : { marginTop: `${PARA_GAP_EM}em` }}
@@ -217,7 +219,7 @@ export function PlaygroundCopy({
       />
 
       <div style={{ fontSize: NOTE, lineHeight: NOTE_LEADING }}>
-        {PLAYGROUND_NOTE.map((line) => (
+        {note.map((line) => (
           <p key={line}>{line}</p>
         ))}
       </div>

@@ -37,15 +37,23 @@ import type { CardTint } from "./metrics";
 import type { Field, Tone } from "./primitives";
 
 /**
- * The three studies that exist today, and the floor under `generateStaticParams`.
+ * The studies that are live today, and the floor under `generateStaticParams`.
  *
- * **Not a whitelist.** `app/work/[slug]` leaves `dynamicParams` at its default, so a fourth
- * row added in the CMS is a working page the moment somebody asks for it — no deploy, and
- * nothing to add here. This list only guarantees that these three are prerendered at build
- * time even if the CMS happens to be unreachable during it, which is what keeps the home
- * page's three links from pointing at routes the manifest has never heard of.
+ * **Not a whitelist.** `app/work/[slug]` leaves `dynamicParams` at its default, so a row added
+ * in the CMS is a working page the moment somebody asks for it — no deploy, and nothing to add
+ * here. This list only guarantees that these are prerendered at build time even if the CMS
+ * happens to be unreachable during it, which is what keeps the home page's links from pointing
+ * at routes the manifest has never heard of.
+ *
+ * **`auto-maxx` was here and is not any more, and it was not deleted.** That study's rows in
+ * both `CaseStudies` and `CaseStudyPages` are set to `DRAFT` through Wix's own Publish plugin,
+ * so the client keeps all forty-one fields of it and can put it back from the CMS without
+ * anybody touching this repo. Listing a slug here whose row is drafted would only prerender a
+ * 404, and — because `dynamicParams` is true — taking it off this list costs nothing on the way
+ * back: republishing the rows makes `/work/auto-maxx` render again on the first request, and
+ * this entry is worth restoring then only to put it back in the build manifest.
  */
-export const STUDY_SLUGS = ["cafe-technica", "qcif", "auto-maxx"] as const;
+export const STUDY_SLUGS = ["cafe-technica", "qcif"] as const;
 
 /**
  * One piece of supplied media, which may be a picture or a clip.
