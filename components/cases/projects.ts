@@ -1,5 +1,5 @@
 /**
- * The case studies' type, and the three cards the page falls back to.
+ * The case studies' type, and the cards the page falls back to.
  *
  * **The cards' content lives in the client's Wix CMS now** (`CaseStudies`, read through
  * ./content) — this is where their *shape* is defined and where the standing copy below it
@@ -8,11 +8,19 @@
  * CMS retimes the section and needs no change here at all. Nothing else in ./cases knows how
  * many there are, or where they came from.
  *
- * **`CASE_PROJECTS` is the fallback, not the source.** It is the three cards as they stood
- * when the content moved, pointing at the copies in `/public`, and it renders only when the
- * CMS yields nothing usable — see ./content for why this section in particular cannot simply
- * render nothing in that case. Editing it changes what a reader sees when Wix is down, which
- * is worth keeping truthful, and nothing else.
+ * **`CASE_PROJECTS` is the fallback, not the source.** It is the live cards, pointing at the
+ * copies in `/public`, and it renders only when the CMS yields nothing usable — see ./content
+ * for why this section in particular cannot simply render nothing in that case. Editing it
+ * changes what a reader sees when Wix is down, which is worth keeping truthful, and nothing
+ * else.
+ *
+ * **Which is why the Auto Maxx card came out of it.** That study is not deleted — its rows in
+ * both CMS collections are set to `DRAFT` through Wix's own Publish plugin, so the client still
+ * has every field and can republish it without a deploy. But a fallback that still carried the
+ * card would put a study back on the home page at exactly the moment nobody could check it: a
+ * Wix outage. The fallback has to say what is live, not what once was. Putting the study back
+ * means republishing the two rows, and restoring this entry and its `STUDY_SLUGS` slug so the
+ * offline copy and the build manifest agree with the CMS again.
  *
  * ## The schema is the reference's caption, and nothing more
  *
@@ -29,12 +37,13 @@
  * clickable ones reads as a broken link, and naming clients this studio may not have is a
  * claim rather than a layout.
  *
- * **Three cells is now the count, and the section retimes itself for it.** The track's length,
- * the pin's length and every cell's entrance are all derived from the array the page is
- * handed — see `./sequence` — so a fourth study is one more CMS row and nothing else. The
- * reference recording happens to show three, which is why `TRACK_TAIL_VW` and the pace knob
- * were tuned against that count; at two the traverse is simply shorter, and the dev
- * assertions in `./timeline` are written in vw rather than in cells so they still hold.
+ * **The count is whatever the CMS hands over, and the section retimes itself for it.** The
+ * track's length, the pin's length and every cell's entrance are all derived from the array
+ * the page is handed — see `./sequence` — so a study added or drafted is a CMS row and nothing
+ * else. The reference recording happens to show three, which is why `TRACK_TAIL_VW` and the
+ * pace knob were tuned against that count; at two the traverse is simply shorter, and the dev
+ * assertions in `./timeline` are written in vw rather than in cells so they still hold. It is
+ * at two now, Auto Maxx having been drafted in the CMS.
  */
 export type CaseProject = {
   id: string;
@@ -80,8 +89,8 @@ export type CaseProject = {
    * reference's own square-cornered cards (see ./CaseLayers) — this is an opt-in per card,
    * not a global style.
    *
-   * Café Technica needs it because its photo has no rounding of its own. QCIF and Auto Maxx
-   * need it for a subtler reason: their screenshots *did* originally show a browser window's
+   * Café Technica needs it because its photo has no rounding of its own. QCIF needs it for a
+   * subtler reason: its screenshot *did* originally show a browser window's
    * own rounded chrome, but only because the raw export had slack canvas around the mockup
    * for the curve to read against. Once that mockup is trimmed edge-to-edge to fill the card
    * with no margin (see the imageSrc notes below — the fix for the white/grey mat those
@@ -95,8 +104,8 @@ export type CaseProject = {
 };
 
 /**
- * The three cards as they stood when the content moved to the CMS, and what ./content serves
- * if the CMS gives it nothing. Not the page's source of truth — see the file's docblock.
+ * The cards as they stand today, and what ./content serves if the CMS gives it nothing. Not
+ * the page's source of truth — see the file's docblock.
  */
 export const CASE_PROJECTS: CaseProject[] = [
   {
@@ -128,32 +137,6 @@ export const CASE_PROJECTS: CaseProject[] = [
     // A capture: the frame takes its ratio so nothing is cropped and no mat shows.
     aspect: 1293 / 770,
     link: "/work/qcif",
-    rounded: true,
-  },
-  {
-    id: "auto-maxx",
-    title: "Auto Maxx Pensacola",
-    // Trimmed to two lines for the same reason as QCIF's — see the note there. This one
-    // wrapped to three on its own, independent of any change to a neighbour.
-    description:
-      "A custom AI-powered CRM that chases every enquiry for a dealership’s sales team.",
-    // The product itself, which is what the study is about — this client's work has no
-    // photography and a stock forecourt would be a picture of a car dealership rather than
-    // a picture of the job. Same treatment as QCIF's export: a ~22px transparent margin
-    // above and below the mockup trimmed off, then its rounded corners flattened straight
-    // onto this section's resting grey rather than left transparent (which under
-    // `object-cover` would show as white/mat instead of blending in).
-    imageSrc: "/img/wow-image-2.png",
-    // The file's own ratio is 835/451 (1.851) — wider than QCIF's 1293/770 (1.679). Only one
-    // card can set the row's shared frame (`widestAspect` in ./CaseLayers takes the max across
-    // every `aspect` here), and if this one's true ratio won that race it would push the shared
-    // frame wider than QCIF's own image, cropping *that* capture's top and bottom to fit — the
-    // exact harm this field exists to prevent, just moved onto a different card. Capped to
-    // QCIF's ratio instead, so QCIF stays the reference and renders with zero crop; this image
-    // absorbs a ~9% crop off its own left/right edges under `object-cover` instead, the same
-    // trade-off a non-widest card always makes here (see the doc on `aspect` above).
-    aspect: 1293 / 770,
-    link: "/work/auto-maxx",
     rounded: true,
   },
   // A fourth study is a row in the CMS, not an entry here. Not a limit either way — the track
