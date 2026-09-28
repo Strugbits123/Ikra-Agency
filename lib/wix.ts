@@ -39,6 +39,16 @@ export const FOUNDERS_COLLECTION = "Founders";
 export const APPROACH_COLLECTION = "Approach";
 
 /**
+ * The collection behind the copy at the top of `/about` — the paragraphs that climb the screen
+ * over the footage. Same permissions again, and one row rather than one per paragraph: the
+ * blank-line convention separates them inside a single field (see `wixParagraphs`).
+ *
+ * The one collection here whose section keeps its copy in the repo as well, and
+ * `components/playground/content.ts` says why.
+ */
+export const ABOUT_INTRO_COLLECTION = "AboutIntro";
+
+/**
  * The collection behind the home page's case-study cards. Same again — `read: ANYONE`,
  * everything else `ADMIN` — and the first one that feeds `app/page.tsx` rather than
  * `/about`, which is why that route now carries a `revalidate` of its own.

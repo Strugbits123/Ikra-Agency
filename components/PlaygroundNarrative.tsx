@@ -32,8 +32,18 @@ import { climbFor } from "./playground/timeline";
  *
  * Reduced motion registers no ScrollTrigger and renders the static end state: one viewport
  * tall, the copy already at rest, the river drawn but not drifting.
+ *
+ * `copy` arrives as a prop rather than being read here, for the reason `AboutSection` and
+ * `ApproachSection` take theirs that way: everything from this component down is a client
+ * component, so the CMS read belongs to the page (`playgroundCopyFromWix`). Nothing here
+ * depends on how many paragraphs there are — the block's height is measured, and every length
+ * the sequence uses is derived from that measurement.
  */
-export default function PlaygroundNarrative() {
+export default function PlaygroundNarrative({
+  copy,
+}: {
+  copy: readonly string[];
+}) {
   const sectionRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const copyRef = useRef<HTMLDivElement>(null);
@@ -150,6 +160,7 @@ export default function PlaygroundNarrative() {
 
         <PlaygroundCopy
           copyRef={copyRef}
+          copy={copy}
           centred={reducedMotion}
           narrow={narrow}
         />
