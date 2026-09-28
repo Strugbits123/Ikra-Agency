@@ -1,6 +1,7 @@
 "use client";
 
 import type { RefObject } from "react";
+import ArrowLink from "../ArrowLink";
 import Logo from "../Logo";
 import { LOGO_DOTS, MARK_WIDTH } from "./dots";
 import { STATEMENT_LIFT_VH, VEIL_OVERHANG_PX, VEIL_VH } from "./timeline";
@@ -114,6 +115,31 @@ export function Statement({
           Our work transforms a simple idea into an experience of true
           rarity and prestige.
         </p>
+
+        {/* The one call to action on this screen, drawn by the same component as the
+            case-study cards' "explore project" so the two are one affordance rather than two
+            near-identical buttons — see components/ArrowLink.
+
+            Inside `revealRef` rather than beside it, so it lifts and fades in on the
+            statement's own entrance and leaves on its exit. That also keeps it honest with
+            `statementTravel`, which ./measure reads as this block's bottom edge: the exit
+            carries the whole block off the top, so a link parked outside would be left
+            behind on screen with the copy gone.
+
+            **The added height cannot crowd the composition below it, and that is the grid's
+            doing rather than a margin chosen carefully.** The frame is `1fr auto 1fr` with
+            the statement in row 1: a 1fr row cannot shrink below its content, so on a
+            viewport too short for both, row 3 gives up its share and the circle and wordmark
+            slide *down*. See the frame's own note in DefinitionSection.
+
+            `lg:-ml-20` matches the paragraph's own step out into the frame's gutter, so the
+            two share a left edge at every width; without it the link would sit 80px inboard
+            from `lg` up. The top margin is the only new figure here and it is a plain
+            rhythm rather than a measurement — there is no reference frame for this link,
+            since it is an addition to the composition rather than a transcription of it. */}
+        <div className="mt-8 md:mt-10 lg:-ml-20">
+          <ArrowLink label="More About Us" href="/about" size="display" />
+        </div>
       </div>
     </div>
   );

@@ -1,9 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
-import { showRouteCover } from "@/components/routeTransition";
-import type { MouseEvent, ReactNode, RefObject } from "react";
+import ArrowLink from "@/components/ArrowLink";
+import type { ReactNode, RefObject } from "react";
 import { CASE_EXPLORE, CASE_HEADING, type CaseProject } from "./projects";
 import { IMAGE_ASPECT } from "./timeline";
 
@@ -43,67 +42,6 @@ import { IMAGE_ASPECT } from "./timeline";
  * passes down the two writers.
  */
 export type CellRegistrar = (index: number, el: HTMLElement | null) => void;
-
-/** A small caps link with the reference's underline rule. A link only when there is a href. */
-function CaseLink({
-  label,
-  href,
-  className = "",
-}: {
-  label: string;
-  href: string | null;
-  className?: string;
-}) {
-  const inner = (
-    <>
-      <span>{label}</span>
-      <span
-        aria-hidden
-        className="transition-transform duration-300 group-hover/link:translate-x-1"
-      >
-        →
-      </span>
-    </>
-  );
-  const cls =
-    "group/link inline-flex items-center gap-6 border-b border-ink/25 pb-2.5 " +
-    "text-[clamp(10px,0.63vw,13px)] font-normal tracking-[0.2em] text-ink/70 uppercase " +
-    "transition-colors duration-300 hover:border-ink/60 hover:text-ink " +
-    className;
-
-  // A span, not an `href="#"`: a link to nowhere is worse for a keyboard or a screen reader
-  // than no link at all. Give the project a `link` and this becomes a link unchanged.
-  //
-  // `next/link` rather than a bare anchor, so a case study opens without tearing the page
-  // down and rebuilding ScrollSmoother — see SmoothScrollProvider, which resets the
-  // smoother and refreshes every trigger when the route changes.
-  //
-  // The click raises the route cover, and the click rather than a router event because it is
-  // the earliest signal there is: in development the destination segment has not been
-  // compiled at this point, so nothing the router exposes fires until well after the screen
-  // has already gone cream. `SmoothScrollProvider` takes it off again once the new page is
-  // up, reset and re-measured — see `components/RouteCover`.
-  //
-  // Only for a plain left click, though — the same guard `next/link` uses internally to
-  // decide whether *it* will navigate. A modified click (Ctrl/Cmd/Shift/middle-button) opens
-  // the study in a new tab and leaves this one exactly where it was, so raising the cover
-  // there covers a page whose route never changes — and the only thing that ever takes the
-  // cover down is `SmoothScrollProvider`'s effect on `pathname`, which then never fires.
-  // That's a black screen stuck up forever in the original tab.
-  const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
-    if (e.defaultPrevented || e.button !== 0) return;
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    showRouteCover();
-  };
-
-  return href ? (
-    <Link href={href} className={cls} onClick={onClick}>
-      {inner}
-    </Link>
-  ) : (
-    <span className={cls}>{inner}</span>
-  );
-}
 
 /**
  * One cell. Every cell is the same box; only its contents differ.
@@ -205,7 +143,7 @@ export function CaseTrack({
               </span>
             ))}
           </h2>
-          {/* <CaseLink label={CASE_VIEW_ALL} href={null} className="mt-10 lg:mt-12" /> */}
+          {/* <ArrowLink label={CASE_VIEW_ALL} href={null} className="mt-10 lg:mt-12" /> */}
         </div>
       </Cell>
 
@@ -273,7 +211,7 @@ export function CaseTrack({
                   {project.description}
                 </p>
               </div>
-              <CaseLink
+              <ArrowLink
                 label={CASE_EXPLORE}
                 href={project.link}
                 className="mt-1 shrink-0"
