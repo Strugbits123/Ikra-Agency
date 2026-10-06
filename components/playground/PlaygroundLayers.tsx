@@ -7,6 +7,7 @@ import { PLAYGROUND_DESCRIPTOR } from "./content";
 import {
   BODY,
   BODY_LEADING,
+  COPY_BOTTOM_PAD,
   COPY_LEFT_PCT,
   COPY_NARROW_MEASURE,
   COPY_RIGHT_PCT,
@@ -76,10 +77,10 @@ export function PlaygroundBackdrop({
  * header's.
  *
  * It is keyed to the river's own shape rather than to a breakpoint, because that is what
- * decides whether the copy lands on orange: a narrow river sweeps the whole width and the
- * copy sits over all of it, a wide one leaves the right-hand half clear. `riverIsWide` is an
- * aspect test, so a `md:hidden` here would leave every upright tablet with a narrow river and
- * no scrim under it.
+ * decides the copy's layout: against a narrow river the copy is full width on the bottom
+ * gutter with the river above it, against a wide one it takes the right-hand half.
+ * `riverIsWide` is an aspect test, so a `md:hidden` here would leave every upright tablet with
+ * a narrow river and no scrim under it.
  */
 export function PlaygroundScrim({ narrow }: { narrow: boolean }) {
   if (!narrow) return null;
@@ -156,13 +157,16 @@ export function PlaygroundHeader({
  * Where it sits follows the river's own shape rather than a breakpoint, for the reason
  * PlaygroundScrim gives: against a wide river it takes the right-hand half at its measured
  * edges, clear of the water except at its own top-left corner, which is the reference's own
- * composition; against a narrow one — which sweeps the whole width — it goes full width over
- * the river and the scrim, capped at COPY_NARROW_MEASURE so a tablet does not set 90
- * characters to the line.
+ * composition; against a narrow one it goes full width and rests on the stage's bottom
+ * gutter, COPY_BOTTOM_PAD, with the river laid across the stage above it — the two split the
+ * screen rather than share it (see ./metrics). It is capped at COPY_NARROW_MEASURE so a
+ * tablet does not set 90 characters to the line.
  *
  * `centred` is the reduced-motion path, and it is a class rather than a measurement because
- * in that mode nothing ever writes a transform here — so the CSS centring that GSAP would
- * otherwise wipe is safe, and is the one construction that needs no measurement at all.
+ * in that mode nothing ever writes a transform here — so the CSS placement that GSAP would
+ * otherwise wipe is safe, and is the one construction that needs no measurement at all. On
+ * the narrow layout that placement is `bottom: COPY_BOTTOM_PAD` rather than centring, so the
+ * static end state is the same composition the sequence climbs to.
  *
  * It also starts hidden in every other mode, exactly like the hero's headline and clip box
  * and for the same reason: the effect that places it cannot run until after the first paint —
@@ -188,12 +192,20 @@ export function PlaygroundCopy({
   return (
     <div
       ref={copyRef}
-      className={`pointer-events-none absolute z-20 text-white ${centred ? "top-1/2 -translate-y-1/2" : "top-0 opacity-0"
+      // Read back by PlaygroundNarrative's observer, so a height measured under one layout is
+      // never solved against the other — see `clearBelow` there.
+      data-layout={narrow ? "narrow" : "wide"}
+      className={`pointer-events-none absolute z-20 text-white ${centred
+          ? narrow
+            ? ""
+            : "top-1/2 -translate-y-1/2"
+          : "top-0 opacity-0"
         } ${narrow ? "right-6 left-6" : ""}`}
       style={
         {
           left: narrow ? undefined : `${COPY_LEFT_PCT.toFixed(3)}%`,
           right: narrow ? undefined : `${COPY_RIGHT_PCT.toFixed(3)}%`,
+          bottom: centred && narrow ? COPY_BOTTOM_PAD : undefined,
           maxWidth: narrow ? COPY_NARROW_MEASURE : undefined,
           fontSize: BODY,
           lineHeight: BODY_LEADING,

@@ -8,6 +8,7 @@ import {
   PlaygroundScrim,
 } from "./playground/PlaygroundLayers";
 import RiverBand from "./playground/RiverBand";
+import { COPY_BOTTOM_PAD, RIVER_COPY_GAP } from "./playground/metrics";
 import { riverFor } from "./playground/river";
 import { createPlaygroundSequence } from "./playground/sequence";
 import { climbFor } from "./playground/timeline";
@@ -26,9 +27,11 @@ import { climbFor } from "./playground/timeline";
  * reads; the bodies are plain functions in those modules.
  *
  * Layering, back to front: the footage, the river, the scrim (only where the river is the
- * narrow one), the copy, then the header. The copy is deliberately *over* the river rather
- * than beside it — in the reference its first lines cross the ribbon's upper bend and are
- * painted on top of it.
+ * narrow one), the copy, then the header. On the wide layout the copy is deliberately *over*
+ * the river rather than beside it — in the reference its first lines cross the ribbon's upper
+ * bend and are painted on top of it. On the narrow one the two are kept apart instead: the
+ * copy rests on the bottom gutter and the river is solved to stay above it, which is why this
+ * component measures the copy's height as well as the stage's — see `clearBelow` below.
  *
  * Reduced motion registers no ScrollTrigger and renders the static end state: one viewport
  * tall, the copy already at rest, the river drawn but not drifting.
@@ -55,6 +58,9 @@ export default function PlaygroundNarrative({
   const [mounted, setMounted] = useState(false);
   // The river is laid onto the stage in both axes, so it needs both of them.
   const [stageBox, setStageBox] = useState({ w: 0, h: 0 });
+  // And, on the narrow layout, it is bounded by the copy — so it needs the copy's height too,
+  // tagged with the layout it was measured under (see the observer below for why).
+  const [copyBox, setCopyBox] = useState({ h: 0, layout: "" });
 
   useEffect(() => {
     setReducedMotion(
@@ -82,15 +88,55 @@ export default function PlaygroundNarrative({
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    const el = copyRef.current;
+    if (!el) return;
+    // The block's height is what the narrow river is solved against (see `clearBelow`), and
+    // it changes on its own: the webfont landing, the CMS handing down a longer paragraph, the
+    // column reflowing when `narrow` flips. Same bail-out as the stage's observer above.
+    //
+    // The height is recorded *with the layout the block had when it was measured*. The first
+    // commit lays the copy out in the wide column before the stage has been measured, and on a
+    // phone that column is ~165px wide and the block ~700px tall; the commit that flips
+    // `narrow` re-lays it full width, but the observer only reports the new height a commit
+    // later. Reading the stale figure in between hands the river an 87px room on a 390 × 844
+    // phone and fires the floor assertion on a state nobody ever sees. The tag is what lets
+    // `clearBelow` tell the two apart.
+    const observer = new ResizeObserver(() =>
+      setCopyBox((prev) => {
+        const h = el.offsetHeight;
+        const layout = el.dataset.layout ?? "";
+        return prev.h === h && prev.layout === layout ? prev : { h, layout };
+      }),
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  /**
+   * The lowest `y` the narrow river's ink may reach: the copy's resting top edge, less a line
+   * of air. The copy rests on the bottom gutter (COPY_BOTTOM_PAD — the same figure the
+   * sequence's `measure` rests it on, so the river is solved against where the block actually
+   * lands), and RIVER_COPY_GAP is the daylight between the two. `undefined` until the block has
+   * been measured *in the narrow layout* (see the observer above), which hands the river the
+   * whole stage for that commit; the observer re-solves it on the next.
+   *
+   * Only the narrow layout reads it — `riverFor` ignores it where the river is the wide one.
+   */
+  const clearBelow =
+    copyBox.h > 0 && copyBox.layout === "narrow"
+      ? stageBox.h - copyBox.h - COPY_BOTTOM_PAD - RIVER_COPY_GAP
+      : undefined;
+
   // Memoised because it is an object identity props flow through: recomputed inline, every
   // render would hand RiverBand a new geometry and rebuild its path even when the stage had
   // not moved.
   const river = useMemo(
     () =>
       stageBox.w > 0 && stageBox.h > 0
-        ? riverFor(stageBox.w, stageBox.h)
+        ? riverFor(stageBox.w, stageBox.h, clearBelow)
         : null,
-    [stageBox.w, stageBox.h],
+    [stageBox.w, stageBox.h, clearBelow],
   );
 
   /**

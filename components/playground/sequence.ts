@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
 import { gsap, ScrollTrigger } from "@/lib/gsap";
+import { COPY_BOTTOM_PAD } from "./metrics";
 import {
   CLIMB_EASE,
   HEADER_EXIT,
@@ -65,6 +66,12 @@ export function createPlaygroundSequence(
      * `centredY`. Below it the block rests lower, and below the fraction the assertion works
      * out it hangs past the fold; see CLIMB_TRAVEL_FRAC.
      *
+     * **The narrow layout rests somewhere else and is measured differently.** There the block
+     * sits on the stage's bottom gutter, COPY_BOTTOM_PAD, with the river laid across the stage
+     * above it (see `riverFor`'s `clearBelow`), so its travel is its own height plus that
+     * gutter and nothing is centred. The fraction does not apply: it is a share of the centred
+     * travel, and this composition has no centred state to take a share of.
+     *
      * Read once per refresh rather than per frame: this paints on every scroll event and
      * ticker tick, and on a phone the address bar collapsing changes `stage.offsetHeight`
      * mid-scroll, so a live read would multiply a moving progress by a moving height and
@@ -75,9 +82,14 @@ export function createPlaygroundSequence(
       const copy = refs.copy.current;
       const stageH = stage.offsetHeight;
       const blockH = copy?.offsetHeight ?? 0;
-      const centredY = (stageH - blockH) / 2;
-      m.travel = (stageH - centredY) * travelFrac;
-      m.restY = stageH - m.travel;
+      if (narrow) {
+        m.restY = stageH - blockH - COPY_BOTTOM_PAD;
+        m.travel = stageH - m.restY;
+      } else {
+        const centredY = (stageH - blockH) / 2;
+        m.travel = (stageH - centredY) * travelFrac;
+        m.restY = stageH - m.travel;
+      }
       // Far enough that the lockup's last pixel clears the top edge, not just its first.
       // `offsetHeight` already includes the header's own top padding, so this is the whole
       // distance from the viewport's top edge to the bottom of the descriptor.
@@ -109,8 +121,7 @@ export function createPlaygroundSequence(
           console.error(
             `[Playground] the copy rests with ${Math.round(blockH - m.travel)}px of itself ` +
             `below the fold: a ${travelFrac} climb covers ${Math.round(m.travel)}px against ` +
-            `a ${Math.round(blockH)}px block. Raise ` +
-            `${narrow ? "NARROW_CLIMB_TRAVEL_FRAC" : "CLIMB_TRAVEL_FRAC"} to at least ` +
+            `a ${Math.round(blockH)}px block. Raise CLIMB_TRAVEL_FRAC to at least ` +
             `${needed.toFixed(2)} at this viewport, or shorten the copy.`,
           );
         }
