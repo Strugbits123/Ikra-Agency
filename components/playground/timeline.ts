@@ -1,4 +1,5 @@
 import { gsap } from "@/lib/gsap";
+import { COPY_BOTTOM_PAD } from "./metrics";
 
 /**
  * The playground section's timeline, in vh of actual scrolling through the pin — the same
@@ -94,21 +95,29 @@ const CLIMB_FULL_VH = 105;
 export const HOLD_VH = 30;
 
 /**
- * **The narrow layout climbs the whole way, to centred — the original composition.**
+ * **The narrow layout's climb is not a fraction of the centred travel at all** — the block
+ * rests on the stage's bottom gutter (COPY_BOTTOM_PAD) with the river laid above it, so its
+ * travel is simply its own height plus that gutter, measured in ./sequence. The copy and the
+ * river split the stage rather than sharing it, which is what keeps the paragraph off the
+ * ribbon on a phone; see the figures in ./metrics.
  *
- * Not an exception to the shortening above but the same rule reaching a different answer: the
- * cut exists so the block does not haul further than it needs to, and on a narrow screen the
- * copy is full width over the river and tall against the viewport, so a short climb leaves its
- * foot below the fold at exactly the width with least room to spare. At 1 the block is wholly
- * visible whenever it fits the viewport at all, which is the best any fraction can do — see
- * the assertion in ./sequence, which is what would otherwise fire here.
+ * What is stated here is the *span* that travel is spread over, in vh of real scrolling. On
+ * the wide layout the span is derived from the fraction so the crossing rate holds at ~0.7× the
+ * page's; here the travel is a measured block height, which the section's CSS height cannot
+ * depend on, so the span has to be a number. 90 is sized from the range the block actually
+ * spans on phones: ~45vh of copy on a 390 × 844 screen (travel ≈ 0.49h, crossing at ~0.55× the
+ * page), up to ~80vh on a short one (travel ≈ 0.85h, ~0.94×, still under the page's own rate,
+ * which is the floor the assertion at the foot of this file holds — a block that moves at or
+ * above page speed reads as carried off rather than climbing). Shorter and a tall block
+ * outruns the page; longer and a short block drifts, the 0.18× failure CLIMB_TRAVEL_FRAC's
+ * docblock describes.
  *
  * It is keyed to `narrow` — the river's own aspect test — and not to a width of its own,
- * because that flag already decides that the copy goes full width and takes the scrim, and
+ * because that flag already decides that the copy goes full width under the river, and
  * `riverIsWide`'s docblock is explicit that a second test standing in for it disagrees on
  * every tablet held upright.
  */
-export const NARROW_CLIMB_TRAVEL_FRAC = 1;
+export const NARROW_CLIMB_VH = 90;
 
 /**
  * Every length that follows from the travel, resolved for one layout.
@@ -127,8 +136,10 @@ export const NARROW_CLIMB_TRAVEL_FRAC = 1;
  * re-tested. Same reason the copy's layout does.
  */
 export const climbFor = (narrow: boolean) => {
-  const travelFrac = narrow ? NARROW_CLIMB_TRAVEL_FRAC : CLIMB_TRAVEL_FRAC;
-  const climbVh = CLIMB_FULL_VH * travelFrac;
+  // `travelFrac` is the wide layout's; the narrow one measures its travel instead and does
+  // not read it — see NARROW_CLIMB_VH and ./sequence's `measure`.
+  const travelFrac = CLIMB_TRAVEL_FRAC;
+  const climbVh = narrow ? NARROW_CLIMB_VH : CLIMB_FULL_VH * travelFrac;
   const pinVh = climbVh + HOLD_VH;
   return { travelFrac, climbVh, pinVh, sectionVh: pinVh + 100 };
 };
@@ -221,19 +232,22 @@ export const RIVER_GAP = String.fromCharCode(0x00a0);
 if (process.env.NODE_ENV !== "production") {
   // The climb has to be slower than the page it is scrolling against, or it reads as being
   // swept off rather than rising. Worst case is the tallest block on the shortest viewport,
-  // which is a phone: travel is (H + block)/2, and a block can reach roughly 0.8H there.
-  // Both layouts, since each derives its own span: the fraction scales the travel and the
-  // span together, so the ratio checked here is invariant under either of them — the knobs
-  // change how far and how long, never how fast.
+  // which is a phone, where a block can reach roughly 0.8H. The two layouts travel different
+  // distances: the wide one (H + block)/2 scaled by its fraction, with the span scaled along
+  // with it so the ratio is invariant under the knob; the narrow one its own height plus the
+  // bottom gutter, against a stated span — so it is the one this can actually bind on. The
+  // gutter is taken as a share of a 600px stage, the shortest phone the layout is meant for.
   for (const narrow of [false, true]) {
     const { travelFrac, climbVh } = climbFor(narrow);
-    const worstTravelVh = ((1 + 0.8) / 2) * 100 * travelFrac;
+    const worstTravelVh = narrow
+      ? 0.8 * 100 + (COPY_BOTTOM_PAD / 600) * 100
+      : ((1 + 0.8) / 2) * 100 * travelFrac;
     if (worstTravelVh > climbVh) {
       console.error(
         `[Playground] the ${narrow ? "narrow" : "wide"} copy would travel ` +
         `${worstTravelVh.toFixed(0)}vh over a ${climbVh.toFixed(1)}vh span, i.e. faster ` +
         "than the page scrolls, and would read as being carried off rather than climbing. " +
-        `Raise CLIMB_FULL_VH, or lower ${narrow ? "NARROW_CLIMB_TRAVEL_FRAC" : "CLIMB_TRAVEL_FRAC"}.`,
+        `Raise ${narrow ? "NARROW_CLIMB_VH" : "CLIMB_FULL_VH, or lower CLIMB_TRAVEL_FRAC"}.`,
       );
     }
   }

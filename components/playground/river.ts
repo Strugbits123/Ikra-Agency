@@ -1,4 +1,5 @@
 import { gsap } from "@/lib/gsap";
+import { NARROW_RIVER_MIN_FRAC } from "./metrics";
 
 /**
  * The river — the orange ribbon that winds down the playground section.
@@ -13,9 +14,9 @@ import { gsap } from "@/lib/gsap";
  * The tail ran a hundred pixels below the fold and surfaced again in the corner, which on
  * screen is a severed blob and was reported as one. See "Why the drawing is lifted, and what
  * that buys" over those constants.
- * The narrow drawing is built out of a measured piece of the same drawing but has to place it,
- * so the handful of figures that are preferences rather than measurements all sit with it: the
- * thickness band, the bleed and NARROW_CENTRE_FRAC. Each says so where it stands.
+ * The narrow drawing is not a piece of this one at all — see "Why there are two shapes" — so
+ * the handful of figures that are preferences rather than measurements all sit with it, under
+ * `narrowPoints`. Each says so where it stands.
  *
  * ## Where the shape comes from
  *
@@ -51,10 +52,17 @@ import { gsap } from "@/lib/gsap";
  * against a 40px ribbon. That is not a tight bend, it is a self-intersection.
  *
  * A narrow screen therefore gets its own shape rather than a crop or a squash of this one —
- * the same answer `hero/doors.ts` gives to the same kind of problem. It is built by tiling one
- * measured period of the reference's own lower meander (MOTIF), under a *uniform* scale, so
- * the ribbon's thickness, its bend radii and the clearance between adjacent passes all keep
- * the ratios they were drawn at, at every width.
+ * the same answer `hero/doors.ts` gives to the same kind of problem. **It is also a different
+ * composition, not just a different curve.** On the wide layout the river takes the left of
+ * the stage and the copy the right; a phone has no right-hand half to give the copy, and the
+ * first narrow build tiled a meander down the whole height and set the paragraph *over* it,
+ * which was reported as the two overlapping ("the scrolling text is overlapping the text in
+ * the red strip"). So the narrow layout splits the stage the other way: the copy rests on the
+ * bottom gutter and the river takes whatever is left above it, sweeping from the left edge low
+ * in that room to the top edge at the right — the desktop's own gesture (enters high and
+ * right, leaves low and left) read in the copy's direction, in the room the copy leaves. The
+ * bound it is solved against is the copy's *measured* resting top edge (`clearBelow`), so it
+ * is a different river on every phone and never on the paragraph. See `narrowPoints`.
  *
  * Which of the two a viewport gets is `riverIsWide`, and it is an aspect test rather than a
  * width one — see there for the case that rules a breakpoint out.
@@ -118,13 +126,19 @@ const thicknessFor = (w: number, h: number) =>
   gsap.utils.clamp(40, 92, Math.min(w * 0.042, h * THICKNESS_OF_H));
 
 /**
- * The narrow river's thickness band, and the only thing here that is chosen rather than
- * measured — the reference has no narrow layout to measure. It matters more than a thickness
- * usually would, because that drawing is scaled uniformly: the thickness is therefore also
- * what decides how many bends fit down the screen. Held between 44 and 66 because two bends
- * read as a river and six read as a zigzag.
+ * The narrow river's thickness band — chosen rather than measured, since the reference has no
+ * narrow layout to measure. 14.5% of the width (56 on a 390 phone), held between 44 and 66:
+ * the floor is where the copy it carries stops being readable at arm's length, the ceiling
+ * where a tablet's ribbon starts to read as a block rather than a line.
+ *
+ * It is also bounded by the room the river has (`bottom`, the stage above the copy): a ribbon
+ * can only sweep through a strip about three times its own width — under that the two bends
+ * either side of it are crushed into the edges — so a long paragraph on a short phone narrows
+ * the ribbon before it crowds it. The floor still wins, which is what NARROW_RIVER_MIN_FRAC in
+ * ./metrics then guards.
  */
-const narrowThicknessFor = (w: number) => gsap.utils.clamp(44, 66, w * 0.145);
+const narrowThicknessFor = (w: number, bottom: number) =>
+  gsap.utils.clamp(44, 66, Math.min(w * 0.145, bottom / 3));
 
 /**
  * The shallowest bend in the transcribed run, in reference px — the bottom of the long
@@ -148,8 +162,8 @@ const WIDE_APEX_R = 153;
 const WIDE_APEX_MIN_R_OVER_T = 1.1;
 
 /**
- * Below this the river takes MOTIF whatever the aspect: the wide drawing's copy needs room to
- * read along its shallow stretches, and a phone has none.
+ * Below this the river takes the narrow sweep whatever the aspect: the wide drawing's copy
+ * needs room to read along its shallow stretches, and a phone has none.
  */
 export const RIVER_NARROW_MAX_W = 768;
 
@@ -162,9 +176,9 @@ export const RIVER_NARROW_MAX_W = 768;
  * what is tested, through the measured bend rather than through a ratio standing in for it.
  *
  * The answer travels out on `riverFor`'s own `narrow`, because the layout has to make the
- * same decision: a narrow river sweeps the whole width, so the copy has to go full width over
- * it and take the scrim. Those cannot be left on a `md:` class while this is on the aspect —
- * the two would disagree for every tablet held upright.
+ * same decision: a narrow river takes the top of the stage, so the copy has to go full width
+ * on the bottom gutter beneath it and take the scrim. Those cannot be left on a `md:` class
+ * while this is on the aspect — the two would disagree for every tablet held upright.
  */
 export function riverIsWide(w: number, h: number) {
   if (w < RIVER_NARROW_MAX_W || h <= 0) return false;
@@ -569,49 +583,62 @@ const PLACED = placeWide();
 const WIDE_PLACED = PLACED.points;
 
 /**
- * One period of the reference's own lower meander, in reference px relative to its start —
- * the stretch between arc-length 880 and 1480, chosen because the drawn heading there is
- * 101.2° and 101.7°, i.e. the two ends are half a degree apart. That is what lets copies of
- * it be laid end to end without a visible kink; a period cut between any two points that
- * merely *look* alike leaves one.
+ * ## The narrow river: a sweep across the room above the copy
  *
- * MOTIF_DRIFT is that period's own displacement, so a tile's start is the previous tile's
- * end by construction rather than by a second constant.
- */
-const MOTIF: readonly (readonly [number, number])[] = [
-  [0.0, 0.0],
-  [11.2, 47.0],
-  [42.7, 85.6],
-  [78.4, 120.6],
-  [112.0, 157.5],
-  [136.6, 200.5],
-  [137.4, 249.3],
-  [112.0, 291.9],
-  [70.4, 318.6],
-  [23.4, 335.1],
-  [-23.3, 352.2],
-  [-60.3, 384.1],
-  [-78.1, 430.3],
-];
-const MOTIF_DRIFT = MOTIF[MOTIF.length - 1];
-
-/**
- * Where the narrow river's horizontal extent is centred, as a fraction of the width. The one
- * preference in this file.
+ * None of this is transcription — the reference has no narrow layout — so every figure here is
+ * a preference and says so. The construction is `hero/band.ts`'s, which the head of this file
+ * rejects *for the wide drawing* (a tilted sine misses the measured meander by most of a
+ * ribbon's width) and which is right here for the opposite reason: there is nothing to miss,
+ * and a sine on a tilted baseline is the one shape whose endpoints, amplitude and bend count
+ * can each be retuned without moving the others.
  *
- * 0.38 rather than 0.5 because the drift runs leftward as the river descends: centring the
- * *extent* at 0.38 puts the top bends at roughly three quarters across and lets the bottom
- * ones bleed off the left edge, which is the reference's own gesture (it enters high and
- * right, leaves low and left) at a width that cannot hold the reference's own sweep.
+ * The baseline runs from the **left edge, at the bottom of the river's room**, to the **top
+ * edge, NARROW_EXIT_U of the way across** — "from the left bottom edge to the right top", the
+ * brief's own words. A whole number of half-waves (`humps`) rides on it as a *cosine*, phased
+ * so the exit is a crest: the wave is at an extremum at both ends, where its slope is zero, so
+ * the path leaves each end **parallel to the baseline** and the bleed past it is a straight
+ * run with no kink. That phase is load-bearing rather than cosmetic. The first build used a
+ * sine (zero at both ends, the hero band's construction) and carried it on into the bleed,
+ * and the half-wave *after* the exit bulges back down toward the screen — on a 352 × 568 phone
+ * the ribbon re-entered at the top-right corner and left through the right edge, which reads
+ * as the river starting from the side. A crest at the exit puts the ribbon a whole amplitude
+ * above the top edge as it goes, and a straight bleed can only carry on away. The entry is a
+ * crest too when `humps` is even and a trough when it is odd; either way the path is carried
+ * on past both ends — at least NARROW_BLEED_OF_T ribbons, and further until the centreline is
+ * a whole ribbon clear of the frame — so that no round cap can come onto the screen under a
+ * resize or a collapsing address bar. "Further until clear" is not belt-and-braces: on a phone
+ * held sideways with a long paragraph (736 × 568, the copy taking 65% of it) the baseline runs
+ * at ~16°, and two ribbons of run along it rises only 31px against the 33 the ribbon needs to
+ * leave the top edge — the cap sat on the edge.
+ *
+ * **The bound is enforced after the fact, not assumed.** The lowest ink on screen is measured
+ * off the sampled points — as the stroke's own discs, so the few samples just past the left
+ * edge whose ink reaches back onto the screen are counted at the height that ink actually
+ * reaches — and the whole drawing is shifted so that ink sits *exactly* on `bottom`: up if the
+ * construction crossed it, down if it left room (a crest at the entry starts the ribbon a whole
+ * amplitude above the baseline, and the room it leaves is the copy's air doubled). The gap to
+ * the copy is therefore the one stated in ./metrics at every width, never a function of the
+ * hump count, the amplitude or which end is a trough.
+ *
+ * NARROW_EXIT_U: where the baseline leaves through the top edge, as a fraction of the width.
+ * 0.82 rather than the corner — the wide drawing's head leaves at ~0.9 of its band, and
+ * leaving *through the corner* reads as the river starting from the side of the screen, which
+ * the wide drawing's dive goes to some trouble to avoid (see TAIL_DIVE_SQUEEZE).
+ *
+ * NARROW_AMPLITUDE_OF_T: the sine's amplitude as a share of the thickness. 0.6 is where the
+ * ribbon reads as a river rather than a straight band without the glyphs on it tilting past
+ * the ~40° the hero's ribbon holds itself to — at two humps on a phone the path turns 22° off
+ * its baseline at the steepest, and the baseline itself runs at ~45°.
+ *
+ * NARROW_HUMP_PITCH_OF_T: how long one half-wave is, in ribbons — the knob for how many bends
+ * the sweep has. At 4.5 a 390 × 844 phone with a 45vh block gets two, an upright tablet three;
+ * one is held as the floor so a very short room is still a curve, four as the ceiling so a
+ * tall one does not become a zigzag.
  */
-const NARROW_CENTRE_FRAC = 0.38;
-
-/**
- * How far past the viewport's edges the narrow river runs before it is allowed to stop, in
- * tiles. One whole period at each end, so nothing — a resize, a phone's address bar
- * collapsing mid-scroll — can bring a rounded end cap onto the screen.
- */
-const NARROW_BLEED_TILES = 1;
+const NARROW_EXIT_U = 0.82;
+const NARROW_AMPLITUDE_OF_T = 0.6;
+const NARROW_HUMP_PITCH_OF_T = 4.5;
+const NARROW_BLEED_OF_T = 2;
 
 export type RiverGeometry = {
   narrow: boolean;
@@ -691,47 +718,116 @@ function widePoints(w: number, h: number) {
   );
 }
 
-/** MOTIF tiled down the viewport under one uniform scale — see the docblock above. */
-function narrowPoints(w: number, h: number, thickness: number) {
-  const k = thickness / REF_THICKNESS;
-  const tileH = MOTIF_DRIFT[1] * k;
-  const tiles = Math.ceil(h / tileH) + 2 * NARROW_BLEED_TILES;
+/**
+ * The sweep, in viewport px, ordered **bottom-left to top-right** — which is already the
+ * downstream-to-upstream order RiverGeometry.points asks for, so unlike the wide drawing this
+ * is not reversed by the caller. `bottom` is the lowest y the ink may reach; see the docblock
+ * above for the construction.
+ */
+function narrowPoints(w: number, bottom: number, thickness: number) {
+  const half = thickness / 2;
+  // The baseline: in at the left edge with the ribbon's lower edge on the bound, out through
+  // the top edge with its centreline on it.
+  const ax = 0;
+  const ay = bottom - half;
+  const bx = NARROW_EXIT_U * w;
+  const by = 0;
+  const L = Math.hypot(bx - ax, by - ay);
+  const d = [(bx - ax) / L, (by - ay) / L] as const;
+  // The normal that points *up* (toward −y) — the side the room is on.
+  const n = d[1] <= 0 ? ([d[1], -d[0]] as const) : ([-d[1], d[0]] as const);
 
-  const raw: (readonly [number, number])[] = [];
-  for (let t = 0; t < tiles; t++) {
-    // Each tile drops its first point: it is the previous tile's last.
-    const from = t === 0 ? 0 : 1;
-    for (let i = from; i < MOTIF.length; i++) {
-      raw.push([
-        (MOTIF[i][0] + t * MOTIF_DRIFT[0]) * k,
-        (MOTIF[i][1] + t * MOTIF_DRIFT[1]) * k,
-      ]);
-    }
+  const amplitude = NARROW_AMPLITUDE_OF_T * thickness;
+  const humps = gsap.utils.clamp(
+    1,
+    4,
+    Math.round(L / (NARROW_HUMP_PITCH_OF_T * thickness)),
+  );
+  const bleed = (NARROW_BLEED_OF_T * thickness) / L;
+  // Dense enough that the spline through the samples is the wave: ten per half-wave, and no
+  // coarser than 30px.
+  const step = Math.min(30 / L, 1 / (humps * 10));
+
+  // A crest at the exit (t = 1), whatever the hump count — see the docblock above. Outside
+  // [0, 1] the wave is held at its end value, which is what makes the bleed a straight run.
+  const wave = (t: number) =>
+    amplitude * Math.cos(Math.PI * humps * (1 - gsap.utils.clamp(0, 1, t)));
+  const at = (t: number): readonly [number, number] => {
+    const a = wave(t);
+    return [ax + t * L * d[0] + a * n[0], ay + t * L * d[1] + a * n[1]];
+  };
+
+  // The run on screen, then each end carried on until it is clear of the frame — see the
+  // docblock for why the minimum bleed alone is not enough. Clear means a whole ribbon past
+  // the edge, measured on the axis the end leaves through, and the loops are bounded because
+  // the baseline has a component along each of those axes by construction.
+  const pts: (readonly [number, number])[] = [];
+  for (let t = 0; t <= 1 + 1e-9; t += step) pts.push(at(t));
+  for (let t = -step; t >= -bleed || pts[0][0] > -thickness; t -= step) {
+    pts.unshift(at(t));
+  }
+  for (
+    let t = 1 + step;
+    t <= 1 + bleed || pts[pts.length - 1][1] > -thickness;
+    t += step
+  ) {
+    pts.push(at(t));
   }
 
-  const xs = raw.map((p) => p[0]);
-  const ys = raw.map((p) => p[1]);
-  // Centre the extent horizontally on NARROW_CENTRE_FRAC, and vertically on the viewport so
-  // the bleed tiles fall equally above and below it.
-  const dx =
-    NARROW_CENTRE_FRAC * w - (Math.min(...xs) + Math.max(...xs)) / 2;
-  const dy = h / 2 - (Math.min(...ys) + Math.max(...ys)) / 2;
-  return raw.map(([x, y]) => [x + dx, y + dy] as const);
+  // Place the drawing against the bound rather than trusting the construction: the lowest ink
+  // on screen lands exactly on `bottom`. The ink around a sample is a disc of radius `half`; a
+  // sample just past the left edge still puts the part of its disc that is on screen at
+  // `y + sqrt(half² − x²)`, which is why the window is `[-half, w]` and not `[0, w]`.
+  let lowest = -Infinity;
+  for (const [x, y] of pts) {
+    if (x < -half || x > w) continue;
+    const reach = x < 0 ? Math.sqrt(half * half - x * x) : half;
+    lowest = Math.max(lowest, y + reach);
+  }
+  const shift = lowest - bottom;
+  return pts.map(([x, y]) => [x, y - shift] as const);
 }
 
 /**
  * Everything about the river at one viewport size. Pure — it reads no DOM and holds no
  * state, so the caller can memoise it against the measured stage.
+ *
+ * `clearBelow` is the lowest y the **narrow** river's ink may reach — the copy's resting top
+ * edge less a line of air, measured by the component (see `PlaygroundNarrative`). The wide
+ * drawing ignores it: there the copy takes the right-hand half and the river the left, and the
+ * two already cross only at the copy's top-left corner by design. Omitted, the narrow river is
+ * given the whole stage, which is the one commit before the copy has been measured.
+ *
+ * It is floored at NARROW_RIVER_MIN_FRAC of the stage, because a bound is only useful while
+ * there is a river to bound: under that the copy is taller than the room allows and the two
+ * overlap over the lowest bend, with the scrim under the copy as the backstop. That is reported
+ * in dev rather than hidden — it means the CMS copy has outgrown the phone it is on.
  */
-export function riverFor(w: number, h: number): RiverGeometry {
+export function riverFor(
+  w: number,
+  h: number,
+  clearBelow?: number,
+): RiverGeometry {
   const narrow = !riverIsWide(w, h);
-  const thickness = narrow ? narrowThicknessFor(w) : thicknessFor(w, h);
 
-  const downstream = narrow
-    ? narrowPoints(w, h, thickness)
-    : widePoints(w, h);
-  // Reversed once, here, so every consumer sees one direction — see RiverGeometry.points.
-  const points = [...downstream].reverse();
+  const floor = NARROW_RIVER_MIN_FRAC * h;
+  const bottom = Math.max(floor, Math.min(h, clearBelow ?? h));
+  if (process.env.NODE_ENV !== "production" && narrow && clearBelow !== undefined && clearBelow < floor) {
+    console.error(
+      `[Playground] the copy leaves the river ${Math.round(clearBelow)}px of a ${h}px stage ` +
+      `at ${w}×${h}, under the ${Math.round(floor)}px floor, so the two overlap over the ` +
+      "river's lowest bend. The copy has outgrown this viewport: shorten it, or lower " +
+      "NARROW_RIVER_MIN_FRAC if the overlap is acceptable.",
+    );
+  }
+
+  const thickness = narrow ? narrowThicknessFor(w, bottom) : thicknessFor(w, h);
+
+  // The wide drawing is transcribed top-down and reversed once, here, so every consumer sees
+  // one direction — see RiverGeometry.points. The sweep is built in that direction already.
+  const points = narrow
+    ? narrowPoints(w, bottom, thickness)
+    : [...widePoints(w, h)].reverse();
 
   return {
     narrow,
@@ -846,29 +942,52 @@ if (process.env.NODE_ENV !== "production") {
     );
   }
 
-  // The tiling's guarantee. The curve itself cannot kink — Catmull-Rom shares one tangent
-  // between the two segments meeting at every anchor, the seam included — so what can go
-  // wrong is subtler: the seam's tangent is the chord across it, and if the period were cut
-  // between two points of genuinely different heading that chord would swing away from the
-  // drawn direction and the river would visibly wander at every repeat.
+  // The sweep's guarantee: no ink on screen below the bound it was given, and the ribbon in
+  // through the left edge and out through the top one — never through the copy's room, and
+  // never through the right edge, which would read as the river starting from the side. Swept
+  // over phone and upright-tablet viewports with the copy taking a range of shares of the
+  // stage, since the bound is what makes this a different river on every one of them.
   //
-  // So this checks the seam's chord against the heading actually measured at the cut
-  // (101.2° entering, 101.7° leaving — half a degree apart, which is why this cut was the one
-  // chosen). Note it is not the chord *within* MOTIF that matters: those span 50px of arc
-  // through a bend and read 77° and 111°, which is the curve turning, not a defect.
-  const MOTIF_CUT_HEADING = 101.5;
-  const n = MOTIF.length;
-  const before = [
-    MOTIF[n - 2][0] - MOTIF[n - 1][0],
-    MOTIF[n - 2][1] - MOTIF[n - 1][1],
-  ];
-  const seam = Math.atan2(MOTIF[1][1] - before[1], MOTIF[1][0] - before[0]);
-  const swing = Math.abs((seam * 180) / Math.PI - MOTIF_CUT_HEADING);
-  if (swing > 12) {
+  // "Out through the top" is checked on the *ink*: some on-screen sample is a whole half-ribbon
+  // above the top edge, and no sample whose ink is still visible is past the right edge. The
+  // path's bleed beyond that is allowed to wander wherever it likes — it is off screen.
+  let worstOver = -Infinity;
+  let worstBoundAt = "";
+  let badExit = "";
+  for (let w = 320; w < RIVER_NARROW_MAX_W; w += 32) {
+    for (let h = 568; h <= 1024; h += 56) {
+      for (const share of [0.35, 0.5, 0.65]) {
+        const bound = share * h;
+        const r = riverFor(w, h, bound);
+        if (!r.narrow) continue;
+        const onScreen = r.points.filter(([x]) => x >= 0 && x <= w);
+        const over =
+          Math.max(...onScreen.map(([, y]) => y)) + r.thickness / 2 - bound;
+        if (over > worstOver) {
+          worstOver = over;
+          worstBoundAt = `${w}×${h} @ ${share}`;
+        }
+        const half = r.thickness / 2;
+        const entersLeft = r.points[0][0] < 0;
+        const leavesTop = onScreen.some(([, y]) => y < -half);
+        const neverRight = r.points.every(([x, y]) => y < -half || x <= w);
+        if (!(entersLeft && leavesTop && neverRight) && !badExit) {
+          badExit = `${w}×${h} @ ${share}`;
+        }
+      }
+    }
+  }
+  if (worstOver > 0.5) {
     console.error(
-      `[Playground] the tiled seam's tangent is ${swing.toFixed(1)}° off the heading ` +
-      `measured at MOTIF's cut, so the narrow river will wander at every repeat. Re-cut ` +
-      "the period between two points of equal heading.",
+      `[Playground] the narrow river's ink reaches ${worstOver.toFixed(1)}px below the bound ` +
+      `it was given at ${worstBoundAt}, i.e. onto the copy. narrowPoints' lift is meant to make ` +
+      "this impossible; check the on-screen filter there.",
+    );
+  }
+  if (badExit) {
+    console.error(
+      `[Playground] the narrow river does not enter through the left edge and leave through ` +
+      `the top at ${badExit}. NARROW_EXIT_U and NARROW_BLEED_OF_T are the knobs.`,
     );
   }
 }
