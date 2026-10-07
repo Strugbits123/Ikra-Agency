@@ -31,9 +31,10 @@ import { CLIMB } from "./playground/timeline";
  * is deliberately *over* the river rather than beside it, because in the reference its first
  * lines cross the ribbon's upper bend and are painted on top of it. Where the river is the
  * narrow one (every phone, every tablet held upright) nothing pins and nothing climbs: the
- * stage is one viewport of footage and ribbon, and the copy is a white band under it
- * (`PlaygroundCopyBand`) — the client's brief, after two attempts at sharing the one screen
- * between the paragraph and the ribbon were reported as overlapping and then as cramped.
+ * stage is one viewport of footage and ribbon, and the copy is a white band under it, as
+ * tall as the copy needs (`PlaygroundCopyBand`) — the client's brief, after two attempts at
+ * sharing the one screen between the paragraph and the ribbon were reported as overlapping
+ * and then as cramped.
  *
  * Reduced motion registers no ScrollTrigger and renders the static end state: one viewport
  * tall, the copy already at rest, the river drawn but not drifting.

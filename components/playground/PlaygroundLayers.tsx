@@ -222,17 +222,21 @@ export function PlaygroundCopy({
 
 /**
  * Where the copy goes on the narrow layout: its own band under the stage, white with the
- * copy in black, one viewport tall — the client's brief for phones, stated as "the first
- * viewport is the video with the red strip, the second is this". Not scroll-driven, not
- * pinned, in plain flow after the stage; the band is the second screen the reader scrolls
- * onto, and the ribbon's marquee keeps running on the first.
+ * copy in black — the client's brief for phones, stated as "the first viewport is the video
+ * with the red strip, the second is this". Not scroll-driven, not pinned, in plain flow after
+ * the stage; the band is what the reader scrolls onto, and the ribbon's marquee keeps running
+ * on the stage above it.
  *
- * `min-h-screen` rather than `h-screen`, so a long paragraph from the CMS grows the band
- * instead of being clipped. The copy is centred in it vertically and set at the body size the
- * wide column uses, capped at COPY_NARROW_MEASURE so a tablet does not set 90 characters to
- * the line; the gutters are the stage's own 24px. Plain white and plain black, as asked — not
- * the site's cream and ink, which are a different, warmer pairing and would read as the next
- * section rather than as this one's second screen.
+ * **As tall as the copy and no taller.** It shipped first at a full viewport with the copy
+ * centred in it, and was sent back: on a phone that is a screen of white with a paragraph in
+ * the middle and a third of it empty above and below. So the band takes its height from the
+ * copy, with 3rem of padding top and bottom — about a line and a half of body copy's worth of
+ * air, enough to separate it from the footage above and whatever follows, and not enough to
+ * read as a gap. The copy is set at the body size the wide column uses, capped at
+ * COPY_NARROW_MEASURE so a tablet does not set 90 characters to the line; the gutters are the
+ * stage's own 24px. Plain white and plain black, as asked — not the site's cream and ink,
+ * which are a different, warmer pairing and would read as the next section rather than as
+ * this one's second screen.
  *
  * Keyed to the river's own shape (`narrow`) rather than to a breakpoint, for the reason
  * `riverIsWide` gives: a `md:` class and the river's aspect test disagree for every tablet
@@ -246,7 +250,7 @@ export function PlaygroundCopyBand({
   note: readonly string[];
 }) {
   return (
-    <div className="flex min-h-screen w-full items-center bg-white px-6 py-16 text-black">
+    <div className="w-full bg-white px-6 py-12 text-black">
       <div
         style={
           {
