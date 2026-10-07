@@ -1,12 +1,6 @@
 import type { RefObject } from "react";
 import { gsap, ScrollTrigger } from "@/lib/gsap";
-import { COPY_BOTTOM_PAD } from "./metrics";
-import {
-  CLIMB_EASE,
-  HEADER_EXIT,
-  HEADER_EXIT_EASE,
-  climbFor,
-} from "./timeline";
+import { CLIMB, CLIMB_EASE, HEADER_EXIT, HEADER_EXIT_EASE } from "./timeline";
 
 export type SequenceEls = {
   /** Pinned by the ScrollTrigger: one viewport, holding every layer. */
@@ -33,22 +27,19 @@ export type SequenceRefs = {
  * move at all (it is measured stationary in the viewport across the whole reference clip) and
  * its marquee is deliberately independent of scroll, so there is no moment left for a second
  * clock to drift against.
+ *
+ * Only the wide layout builds this. Where the river is the narrow one the copy is a band under
+ * the stage and nothing scrolls — see `PlaygroundNarrative`.
  */
 export function createPlaygroundSequence(
   section: HTMLElement,
   els: SequenceEls,
   refs: SequenceRefs,
-  /**
-   * The river's own aspect test, passed down rather than re-tested here — it decides how far
-   * the copy climbs and therefore the pin's length, and the section's rendered height is
-   * resolved from the same flag in the same commit. See `climbFor`.
-   */
-  narrow: boolean,
 ) {
   const { stage } = els;
 
   return gsap.context(() => {
-    const { travelFrac, climbVh, pinVh } = climbFor(narrow);
+    const { travelFrac, climbVh, pinVh } = CLIMB;
 
     /**
      * Where the block rests and how far it has to come, both measured rather than stated.
@@ -66,12 +57,6 @@ export function createPlaygroundSequence(
      * `centredY`. Below it the block rests lower, and below the fraction the assertion works
      * out it hangs past the fold; see CLIMB_TRAVEL_FRAC.
      *
-     * **The narrow layout rests somewhere else and is measured differently.** There the block
-     * sits on the stage's bottom gutter, COPY_BOTTOM_PAD, with the river laid across the stage
-     * above it (see `riverFor`'s `clearBelow`), so its travel is its own height plus that
-     * gutter and nothing is centred. The fraction does not apply: it is a share of the centred
-     * travel, and this composition has no centred state to take a share of.
-     *
      * Read once per refresh rather than per frame: this paints on every scroll event and
      * ticker tick, and on a phone the address bar collapsing changes `stage.offsetHeight`
      * mid-scroll, so a live read would multiply a moving progress by a moving height and
@@ -82,14 +67,9 @@ export function createPlaygroundSequence(
       const copy = refs.copy.current;
       const stageH = stage.offsetHeight;
       const blockH = copy?.offsetHeight ?? 0;
-      if (narrow) {
-        m.restY = stageH - blockH - COPY_BOTTOM_PAD;
-        m.travel = stageH - m.restY;
-      } else {
-        const centredY = (stageH - blockH) / 2;
-        m.travel = (stageH - centredY) * travelFrac;
-        m.restY = stageH - m.travel;
-      }
+      const centredY = (stageH - blockH) / 2;
+      m.travel = (stageH - centredY) * travelFrac;
+      m.restY = stageH - m.travel;
       // Far enough that the lockup's last pixel clears the top edge, not just its first.
       // `offsetHeight` already includes the header's own top padding, so this is the whole
       // distance from the viewport's top edge to the bottom of the descriptor.
@@ -187,7 +167,7 @@ export function createPlaygroundSequence(
        */
       scrub: true,
       pin: stage,
-      // The section states its own height (climbFor's `sectionVh`), so ScrollTrigger must not
+      // The section states its own height (CLIMB.sectionVh), so ScrollTrigger must not
       // reserve a second copy of it — same as the hero's and DefinitionSection's pins, and
       // unlike CaseStudies', whose length is measured rather than designed.
       pinSpacing: false,

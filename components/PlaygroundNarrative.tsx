@@ -4,14 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PlaygroundBackdrop,
   PlaygroundCopy,
+  PlaygroundCopyBand,
   PlaygroundHeader,
-  PlaygroundScrim,
 } from "./playground/PlaygroundLayers";
 import RiverBand from "./playground/RiverBand";
-import { COPY_BOTTOM_PAD, RIVER_COPY_GAP } from "./playground/metrics";
 import { riverFor } from "./playground/river";
 import { createPlaygroundSequence } from "./playground/sequence";
-import { climbFor } from "./playground/timeline";
+import { CLIMB } from "./playground/timeline";
 
 /**
  * The playground's first section, assembled on the same five-part plan as the three
@@ -26,12 +25,15 @@ import { climbFor } from "./playground/timeline";
  * The refs and the effects stay here so each effect's dependencies sit next to the state it
  * reads; the bodies are plain functions in those modules.
  *
- * Layering, back to front: the footage, the river, the scrim (only where the river is the
- * narrow one), the copy, then the header. On the wide layout the copy is deliberately *over*
- * the river rather than beside it — in the reference its first lines cross the ribbon's upper
- * bend and are painted on top of it. On the narrow one the two are kept apart instead: the
- * copy rests on the bottom gutter and the river is solved to stay above it, which is why this
- * component measures the copy's height as well as the stage's — see `clearBelow` below.
+ * **Two compositions, and only one of them scrolls.** Where the river is the wide one (every
+ * desktop, every tablet held sideways) the stage pins and the copy climbs into it over the
+ * river — layered, back to front: the footage, the river, the copy, then the header; the copy
+ * is deliberately *over* the river rather than beside it, because in the reference its first
+ * lines cross the ribbon's upper bend and are painted on top of it. Where the river is the
+ * narrow one (every phone, every tablet held upright) nothing pins and nothing climbs: the
+ * stage is one viewport of footage and ribbon, and the copy is a white band under it
+ * (`PlaygroundCopyBand`) — the client's brief, after two attempts at sharing the one screen
+ * between the paragraph and the ribbon were reported as overlapping and then as cramped.
  *
  * Reduced motion registers no ScrollTrigger and renders the static end state: one viewport
  * tall, the copy already at rest, the river drawn but not drifting.
@@ -58,9 +60,6 @@ export default function PlaygroundNarrative({
   const [mounted, setMounted] = useState(false);
   // The river is laid onto the stage in both axes, so it needs both of them.
   const [stageBox, setStageBox] = useState({ w: 0, h: 0 });
-  // And, on the narrow layout, it is bounded by the copy — so it needs the copy's height too,
-  // tagged with the layout it was measured under (see the observer below for why).
-  const [copyBox, setCopyBox] = useState({ h: 0, layout: "" });
 
   useEffect(() => {
     setReducedMotion(
@@ -88,78 +87,35 @@ export default function PlaygroundNarrative({
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    const el = copyRef.current;
-    if (!el) return;
-    // The block's height is what the narrow river is solved against (see `clearBelow`), and
-    // it changes on its own: the webfont landing, the CMS handing down a longer paragraph, the
-    // column reflowing when `narrow` flips. Same bail-out as the stage's observer above.
-    //
-    // The height is recorded *with the layout the block had when it was measured*. The first
-    // commit lays the copy out in the wide column before the stage has been measured, and on a
-    // phone that column is ~165px wide and the block ~700px tall; the commit that flips
-    // `narrow` re-lays it full width, but the observer only reports the new height a commit
-    // later. Reading the stale figure in between hands the river an 87px room on a 390 × 844
-    // phone and fires the floor assertion on a state nobody ever sees. The tag is what lets
-    // `clearBelow` tell the two apart.
-    const observer = new ResizeObserver(() =>
-      setCopyBox((prev) => {
-        const h = el.offsetHeight;
-        const layout = el.dataset.layout ?? "";
-        return prev.h === h && prev.layout === layout ? prev : { h, layout };
-      }),
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  /**
-   * The lowest `y` the narrow river's ink may reach: the copy's resting top edge, less a line
-   * of air. The copy rests on the bottom gutter (COPY_BOTTOM_PAD — the same figure the
-   * sequence's `measure` rests it on, so the river is solved against where the block actually
-   * lands), and RIVER_COPY_GAP is the daylight between the two. `undefined` until the block has
-   * been measured *in the narrow layout* (see the observer above), which hands the river the
-   * whole stage for that commit; the observer re-solves it on the next.
-   *
-   * Only the narrow layout reads it — `riverFor` ignores it where the river is the wide one.
-   */
-  const clearBelow =
-    copyBox.h > 0 && copyBox.layout === "narrow"
-      ? stageBox.h - copyBox.h - COPY_BOTTOM_PAD - RIVER_COPY_GAP
-      : undefined;
-
   // Memoised because it is an object identity props flow through: recomputed inline, every
   // render would hand RiverBand a new geometry and rebuild its path even when the stage had
   // not moved.
   const river = useMemo(
     () =>
       stageBox.w > 0 && stageBox.h > 0
-        ? riverFor(stageBox.w, stageBox.h, clearBelow)
+        ? riverFor(stageBox.w, stageBox.h)
         : null,
-    [stageBox.w, stageBox.h, clearBelow],
+    [stageBox.w, stageBox.h],
   );
 
   /**
-   * Which shape the river takes, and therefore where the copy goes and whether there is a
-   * scrim under it — one decision, made once, rather than a `riverIsWide` here and a `md:`
-   * class in the layers that would disagree for every tablet held upright (see riverIsWide).
+   * Which shape the river takes, and therefore which of the two compositions this is — one
+   * decision, made once, rather than a `riverIsWide` here and a `md:` class in the layers
+   * that would disagree for every tablet held upright (see riverIsWide).
    *
-   * It defaults to the wide layout for the one commit before the stage has been measured.
-   * That is not a visible flash: the copy starts below the fold in this mode and is placed by
-   * the sequence's first paint, and the scrim only ever appears.
+   * `null` until the stage has been measured, and the sequence waits for it: the first commit
+   * cannot know which composition it is in, and building the wide layout's pin on a phone for
+   * one commit only to tear it down measured the copy in a column it never has there and
+   * fired the climb's assertions on a state nobody sees.
    */
-  const narrow = river ? river.narrow : false;
+  const narrow = river ? river.narrow : null;
 
   /**
-   * How far the copy climbs, and every length that follows from it — the section's own height
-   * included. Resolved from `narrow` here and handed to the sequence, so the height the
-   * section renders and the pin length the sequence scales progress against cannot disagree.
-   *
-   * It therefore changes once, on the commit the stage is first measured, exactly as the
-   * copy's layout does. Not a visible reflow: that commit happens before the reader can have
-   * scrolled, and the sequence is rebuilt on the same flag below.
+   * Whether this section scrolls at all. Only the wide layout has anything to drive; the
+   * narrow one is two plain viewports in flow. Reduced motion takes the static end state of
+   * whichever composition it is in.
    */
-  const climb = climbFor(narrow);
+  const scrolls = narrow === false && !reducedMotion;
 
   // Gated on `mounted` as well as the motion mode, because `reducedMotion` is false for the
   // first commit whatever the reader's setting is — it cannot be read until the effect that
@@ -167,7 +123,7 @@ export default function PlaygroundNarrative({
   // built and pinned, then reverted a commit later; the pin is what makes that more than
   // wasted work.
   useEffect(() => {
-    if (reducedMotion || !mounted) return;
+    if (!scrolls || !mounted) return;
     const section = sectionRef.current;
     const stage = stageRef.current;
     if (!section || !stage) return;
@@ -176,20 +132,25 @@ export default function PlaygroundNarrative({
       section,
       { stage },
       { copy: copyRef, header: headerRef },
-      narrow,
     );
     return () => ctx.revert();
-    // `narrow` is a dependency because the pin's length is derived from it: the trigger has to
-    // be rebuilt, not just repainted, when the river flips shape (a tablet being rotated, or
-    // the first commit after the stage is measured).
-  }, [reducedMotion, mounted, narrow]);
+    // `scrolls` folds `narrow` in, so the trigger is rebuilt — not just repainted — when the
+    // river flips shape (a tablet being rotated, or the first commit after the stage is
+    // measured).
+  }, [scrolls, mounted]);
+
+  /**
+   * The section's height. The wide layout states it — the pin's length plus the viewport it
+   * holds, see CLIMB — because `pinSpacing: false` means ScrollTrigger reserves nothing. The
+   * narrow layout is the stage plus the band in plain flow and takes its height from them,
+   * and the one commit before the stage is measured takes the wide figure so a phone does
+   * not open on a one-viewport section that then doubles.
+   */
+  const height =
+    narrow === true ? undefined : reducedMotion ? "100vh" : `${CLIMB.sectionVh}vh`;
 
   return (
-    <section
-      ref={sectionRef}
-      className="relative bg-black"
-      style={{ height: reducedMotion ? "100vh" : `${climb.sectionVh}vh` }}
-    >
+    <section ref={sectionRef} className="relative bg-black" style={{ height }}>
       {/* GSAP pins this element directly (see createPlaygroundSequence); CSS `sticky` does
           not work anywhere in this app. */}
       <div ref={stageRef} className="relative h-screen w-full overflow-hidden">
@@ -204,18 +165,19 @@ export default function PlaygroundNarrative({
           />
         )}
 
-        <PlaygroundScrim narrow={narrow} />
-
-        <PlaygroundCopy
-          copyRef={copyRef}
-          copy={copy}
-          note={note}
-          centred={reducedMotion}
-          narrow={narrow}
-        />
+        {narrow === false && (
+          <PlaygroundCopy
+            copyRef={copyRef}
+            copy={copy}
+            note={note}
+            centred={reducedMotion}
+          />
+        )}
 
         <PlaygroundHeader headerRef={headerRef} />
       </div>
+
+      {narrow === true && <PlaygroundCopyBand copy={copy} note={note} />}
     </section>
   );
 }
