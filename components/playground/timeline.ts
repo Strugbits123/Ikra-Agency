@@ -1,5 +1,4 @@
 import { gsap } from "@/lib/gsap";
-import { COPY_BOTTOM_PAD } from "./metrics";
 
 /**
  * The playground section's timeline, in vh of actual scrolling through the pin — the same
@@ -95,32 +94,7 @@ const CLIMB_FULL_VH = 105;
 export const HOLD_VH = 30;
 
 /**
- * **The narrow layout's climb is not a fraction of the centred travel at all** — the block
- * rests on the stage's bottom gutter (COPY_BOTTOM_PAD) with the river laid above it, so its
- * travel is simply its own height plus that gutter, measured in ./sequence. The copy and the
- * river split the stage rather than sharing it, which is what keeps the paragraph off the
- * ribbon on a phone; see the figures in ./metrics.
- *
- * What is stated here is the *span* that travel is spread over, in vh of real scrolling. On
- * the wide layout the span is derived from the fraction so the crossing rate holds at ~0.7× the
- * page's; here the travel is a measured block height, which the section's CSS height cannot
- * depend on, so the span has to be a number. 90 is sized from the range the block actually
- * spans on phones: ~45vh of copy on a 390 × 844 screen (travel ≈ 0.49h, crossing at ~0.55× the
- * page), up to ~80vh on a short one (travel ≈ 0.85h, ~0.94×, still under the page's own rate,
- * which is the floor the assertion at the foot of this file holds — a block that moves at or
- * above page speed reads as carried off rather than climbing). Shorter and a tall block
- * outruns the page; longer and a short block drifts, the 0.18× failure CLIMB_TRAVEL_FRAC's
- * docblock describes.
- *
- * It is keyed to `narrow` — the river's own aspect test — and not to a width of its own,
- * because that flag already decides that the copy goes full width under the river, and
- * `riverIsWide`'s docblock is explicit that a second test standing in for it disagrees on
- * every tablet held upright.
- */
-export const NARROW_CLIMB_VH = 90;
-
-/**
- * Every length that follows from the travel, resolved for one layout.
+ * Every length that follows from the travel.
  *
  * The span is **derived** from the fraction rather than stated: a shorter travel over the same
  * span would not be a shorter climb, it would be the same climb slowed down — at 0.25 the block
@@ -129,20 +103,21 @@ export const NARROW_CLIMB_VH = 90;
  * changes is how soon the section is done with the reader. It follows that the pin shortens
  * too, and that is the point: the pin ends when the climb does (plus HOLD_VH).
  *
- * One function rather than two sets of constants because `sectionVh` is the section's CSS
- * height and `pinVh` is what the sequence converts progress against — if those two are
- * resolved from different predicates the climb is scaled against a height the section does not
- * have. They take the same `narrow` the component already computed, passed down rather than
- * re-tested. Same reason the copy's layout does.
+ * One object rather than loose constants because `sectionVh` is the section's CSS height and
+ * `pinVh` is what the sequence converts progress against — if those two were stated apart the
+ * climb could be scaled against a height the section does not have.
+ *
+ * **These are the wide layout's figures, and the wide layout is the only one that scrolls.**
+ * Where the river is the narrow one (every phone, every upright tablet) nothing here applies:
+ * the stage is a single unpinned viewport and the copy is a plain band under it — see
+ * `PlaygroundNarrative`. There is no narrow climb to tune.
  */
-export const climbFor = (narrow: boolean) => {
-  // `travelFrac` is the wide layout's; the narrow one measures its travel instead and does
-  // not read it — see NARROW_CLIMB_VH and ./sequence's `measure`.
+export const CLIMB = (() => {
   const travelFrac = CLIMB_TRAVEL_FRAC;
-  const climbVh = narrow ? NARROW_CLIMB_VH : CLIMB_FULL_VH * travelFrac;
+  const climbVh = CLIMB_FULL_VH * travelFrac;
   const pinVh = climbVh + HOLD_VH;
   return { travelFrac, climbVh, pinVh, sectionVh: pinVh + 100 };
-};
+})();
 
 
 /**
@@ -195,7 +170,7 @@ export const HEADER_EXIT_EASE = gsap.parseEase("sine.inOut");
  * `DefinitionSection`'s own climb is linear for the same reason.
  *
  * At this span the copy crosses at about 0.7× the page's own rate, which is what makes it read
- * as climbing rather than as being carried — see climbFor.
+ * as climbing rather than as being carried — see CLIMB.
  */
 export const CLIMB_EASE = gsap.parseEase("none");
 
@@ -213,15 +188,22 @@ export const MARQUEE_SPEED = 20;
 /**
  * The copy that rides the river, and the gap between repetitions.
  *
- * The triangle is U+25C0 and it points upstream — back along the direction the copy is
- * travelling. Worth knowing before editing it: the Zalando variable font has no glyph for it
+ * The marker is **U+25BA, "black right-pointing pointer", and not U+25B6 — and the difference
+ * is an iPhone.** U+25B6 has an emoji presentation (it is the ▶️ key on every emoji keyboard),
+ * and when a font has no glyph for it iOS falls back to Apple Color Emoji: the ribbon's
+ * marker rendered as a blue-and-white play button on the client's phone, where every desktop
+ * browser drew a flat black triangle. U+FE0E (the text-presentation selector) is the textbook
+ * answer and is not reliable inside SVG `<textPath>` across engines; U+25BA sidesteps it, since
+ * it has no emoji form at all and falls back to the same symbol fonts on every platform.
+ *
+ * Worth knowing before editing it again: the Zalando variable font has no glyph for either
  * (checked against the file's own cmap), so it renders from the platform fallback, and the
  * measured 400px pitch at a 46px type size only closes if that fallback's advance is about
  * 0.6em. A different marker will shift the pitch; nothing breaks, the repeats simply sit
  * closer or further apart.
  */
 export const RIVER_TEXT = "Work Upstream";
-export const RIVER_MARKER = "▶"; // ◀ 
+export const RIVER_MARKER = "►";
 /**
  * The gap either side of the marker. A non-breaking space rather than an ordinary one,
  * because SVG collapses runs of ordinary whitespace — and built from its code point rather
@@ -231,24 +213,17 @@ export const RIVER_GAP = String.fromCharCode(0x00a0);
 
 if (process.env.NODE_ENV !== "production") {
   // The climb has to be slower than the page it is scrolling against, or it reads as being
-  // swept off rather than rising. Worst case is the tallest block on the shortest viewport,
-  // which is a phone, where a block can reach roughly 0.8H. The two layouts travel different
-  // distances: the wide one (H + block)/2 scaled by its fraction, with the span scaled along
-  // with it so the ratio is invariant under the knob; the narrow one its own height plus the
-  // bottom gutter, against a stated span — so it is the one this can actually bind on. The
-  // gutter is taken as a share of a 600px stage, the shortest phone the layout is meant for.
-  for (const narrow of [false, true]) {
-    const { travelFrac, climbVh } = climbFor(narrow);
-    const worstTravelVh = narrow
-      ? 0.8 * 100 + (COPY_BOTTOM_PAD / 600) * 100
-      : ((1 + 0.8) / 2) * 100 * travelFrac;
-    if (worstTravelVh > climbVh) {
-      console.error(
-        `[Playground] the ${narrow ? "narrow" : "wide"} copy would travel ` +
-        `${worstTravelVh.toFixed(0)}vh over a ${climbVh.toFixed(1)}vh span, i.e. faster ` +
-        "than the page scrolls, and would read as being carried off rather than climbing. " +
-        `Raise ${narrow ? "NARROW_CLIMB_VH" : "CLIMB_FULL_VH, or lower CLIMB_TRAVEL_FRAC"}.`,
-      );
-    }
+  // swept off rather than rising. Worst case is the tallest block on the shortest viewport
+  // the wide layout reaches — a landscape tablet — where a block can reach roughly 0.8H:
+  // travel is (H + block)/2 scaled by the fraction, with the span scaled along with it, so
+  // the ratio is invariant under the knob and this only binds if CLIMB_FULL_VH is cut.
+  const worstTravelVh = ((1 + 0.8) / 2) * 100 * CLIMB.travelFrac;
+  if (worstTravelVh > CLIMB.climbVh) {
+    console.error(
+      `[Playground] the copy would travel ${worstTravelVh.toFixed(0)}vh over a ` +
+      `${CLIMB.climbVh.toFixed(1)}vh span, i.e. faster than the page scrolls, and would ` +
+      "read as being carried off rather than climbing. Raise CLIMB_FULL_VH, or lower " +
+      "CLIMB_TRAVEL_FRAC.",
+    );
   }
 }

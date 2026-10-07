@@ -7,7 +7,6 @@ import { PLAYGROUND_DESCRIPTOR } from "./content";
 import {
   BODY,
   BODY_LEADING,
-  COPY_BOTTOM_PAD,
   COPY_LEFT_PCT,
   COPY_NARROW_MEASURE,
   COPY_RIGHT_PCT,
@@ -21,13 +20,13 @@ import {
   RULE_BOTTOM_EM,
   RULE_TOP_EM,
   RULE_WIDTH,
-  SCRIM_ALPHA,
 } from "./metrics";
 
 /**
- * The layers of the playground section: the field, the scrim, the header lockup and the
- * travelling copy. Markup and classes only — every figure comes from ./metrics, every beat
- * from ./timeline, and nothing here animates itself.
+ * The layers of the playground section: the field, the header lockup, the travelling copy
+ * and — where the river is the narrow one — the band the copy moves into instead. Markup and
+ * classes only — every figure comes from ./metrics, every beat from ./timeline, and nothing
+ * here animates itself.
  */
 
 /**
@@ -68,28 +67,6 @@ export function PlaygroundBackdrop({
         />
       )}
     </div>
-  );
-}
-
-/**
- * The scrim — see SCRIM_ALPHA for the two contrast measurements that size it. It sits over
- * the river and under the copy, so what it buys is the copy's legibility and not the
- * header's.
- *
- * It is keyed to the river's own shape rather than to a breakpoint, because that is what
- * decides the copy's layout: against a narrow river the copy is full width on the bottom
- * gutter with the river above it, against a wide one it takes the right-hand half.
- * `riverIsWide` is an aspect test, so a `md:hidden` here would leave every upright tablet with
- * a narrow river and no scrim under it.
- */
-export function PlaygroundScrim({ narrow }: { narrow: boolean }) {
-  if (!narrow) return null;
-  return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute inset-0 z-10"
-      style={{ backgroundColor: `rgb(0 0 0 / ${SCRIM_ALPHA})` }}
-    />
   );
 }
 
@@ -145,7 +122,51 @@ export function PlaygroundHeader({
 }
 
 /**
- * The travelling copy — the one thing on this screen that moves.
+ * The paragraphs, the rule and the footnote — the same markup wherever the copy is set, so
+ * the two placements below cannot drift apart in content. Only the rule's colour differs,
+ * because it is the one thing that has to answer to the ground it sits on.
+ */
+function CopyBody({
+  copy,
+  note,
+  ruleClassName,
+}: {
+  copy: readonly string[];
+  note: readonly string[];
+  ruleClassName: string;
+}) {
+  return (
+    <>
+      {copy.map((para, i) => (
+        <p
+          key={para.slice(0, 24)}
+          style={i === 0 ? undefined : { marginTop: `${PARA_GAP_EM}em` }}
+        >
+          {para}
+        </p>
+      ))}
+
+      <hr
+        className={`border-0 border-t ${ruleClassName}`}
+        style={{
+          width: RULE_WIDTH,
+          marginTop: `${RULE_TOP_EM}em`,
+          marginBottom: `${RULE_BOTTOM_EM}em`,
+        }}
+      />
+
+      <div style={{ fontSize: NOTE, lineHeight: NOTE_LEADING }}>
+        {note.map((line) => (
+          <p key={line}>{line}</p>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/**
+ * The travelling copy — the one thing on this screen that moves. **Wide layout only**: where
+ * the river is the narrow one the copy is not on the stage at all, see PlaygroundCopyBand.
  *
  * Anchored at `top-0` with no vertical centring of its own, exactly like
  * `definition/Dictionary`'s panel and for the same reason: the sequence drives `y` here, and
@@ -154,19 +175,12 @@ export function PlaygroundHeader({
  * is measured (see ./sequence's `restY`), which also makes it a number the travel can be
  * derived from rather than a second constant.
  *
- * Where it sits follows the river's own shape rather than a breakpoint, for the reason
- * PlaygroundScrim gives: against a wide river it takes the right-hand half at its measured
- * edges, clear of the water except at its own top-left corner, which is the reference's own
- * composition; against a narrow one it goes full width and rests on the stage's bottom
- * gutter, COPY_BOTTOM_PAD, with the river laid across the stage above it — the two split the
- * screen rather than share it (see ./metrics). It is capped at COPY_NARROW_MEASURE so a
- * tablet does not set 90 characters to the line.
+ * It takes the right-hand half at its measured edges, clear of the water except at its own
+ * top-left corner, which is the reference's own composition.
  *
  * `centred` is the reduced-motion path, and it is a class rather than a measurement because
- * in that mode nothing ever writes a transform here — so the CSS placement that GSAP would
- * otherwise wipe is safe, and is the one construction that needs no measurement at all. On
- * the narrow layout that placement is `bottom: COPY_BOTTOM_PAD` rather than centring, so the
- * static end state is the same composition the sequence climbs to.
+ * in that mode nothing ever writes a transform here — so the CSS centring that GSAP would
+ * otherwise wipe is safe, and is the one construction that needs no measurement at all.
  *
  * It also starts hidden in every other mode, exactly like the hero's headline and clip box
  * and for the same reason: the effect that places it cannot run until after the first paint —
@@ -179,7 +193,6 @@ export function PlaygroundCopy({
   copy,
   note,
   centred,
-  narrow,
 }: {
   copyRef: RefObject<HTMLDivElement | null>;
   /** The paragraphs, out of the CMS by way of the page — see `aboutIntroFromWix`. */
@@ -187,53 +200,67 @@ export function PlaygroundCopy({
   /** The footnote's lines, from the same row. The rule between them is the layout's. */
   note: readonly string[];
   centred: boolean;
-  narrow: boolean;
 }) {
   return (
     <div
       ref={copyRef}
-      // Read back by PlaygroundNarrative's observer, so a height measured under one layout is
-      // never solved against the other — see `clearBelow` there.
-      data-layout={narrow ? "narrow" : "wide"}
-      className={`pointer-events-none absolute z-20 text-white ${centred
-          ? narrow
-            ? ""
-            : "top-1/2 -translate-y-1/2"
-          : "top-0 opacity-0"
-        } ${narrow ? "right-6 left-6" : ""}`}
+      className={`pointer-events-none absolute z-20 text-white ${centred ? "top-1/2 -translate-y-1/2" : "top-0 opacity-0"
+        }`}
       style={
         {
-          left: narrow ? undefined : `${COPY_LEFT_PCT.toFixed(3)}%`,
-          right: narrow ? undefined : `${COPY_RIGHT_PCT.toFixed(3)}%`,
-          bottom: centred && narrow ? COPY_BOTTOM_PAD : undefined,
-          maxWidth: narrow ? COPY_NARROW_MEASURE : undefined,
+          left: `${COPY_LEFT_PCT.toFixed(3)}%`,
+          right: `${COPY_RIGHT_PCT.toFixed(3)}%`,
           fontSize: BODY,
           lineHeight: BODY_LEADING,
         } as CSSProperties
       }
     >
-      {copy.map((para, i) => (
-        <p
-          key={para.slice(0, 24)}
-          style={i === 0 ? undefined : { marginTop: `${PARA_GAP_EM}em` }}
-        >
-          {para}
-        </p>
-      ))}
+      <CopyBody copy={copy} note={note} ruleClassName="border-white/60" />
+    </div>
+  );
+}
 
-      <hr
-        className="border-0 border-t border-white/60"
-        style={{
-          width: RULE_WIDTH,
-          marginTop: `${RULE_TOP_EM}em`,
-          marginBottom: `${RULE_BOTTOM_EM}em`,
-        }}
-      />
-
-      <div style={{ fontSize: NOTE, lineHeight: NOTE_LEADING }}>
-        {note.map((line) => (
-          <p key={line}>{line}</p>
-        ))}
+/**
+ * Where the copy goes on the narrow layout: its own band under the stage, white with the
+ * copy in black — the client's brief for phones, stated as "the first viewport is the video
+ * with the red strip, the second is this". Not scroll-driven, not pinned, in plain flow after
+ * the stage; the band is what the reader scrolls onto, and the ribbon's marquee keeps running
+ * on the stage above it.
+ *
+ * **As tall as the copy and no taller.** It shipped first at a full viewport with the copy
+ * centred in it, and was sent back: on a phone that is a screen of white with a paragraph in
+ * the middle and a third of it empty above and below. So the band takes its height from the
+ * copy, with 3rem of padding top and bottom — about a line and a half of body copy's worth of
+ * air, enough to separate it from the footage above and whatever follows, and not enough to
+ * read as a gap. The copy is set at the body size the wide column uses, capped at
+ * COPY_NARROW_MEASURE so a tablet does not set 90 characters to the line; the gutters are the
+ * stage's own 24px. Plain white and plain black, as asked — not the site's cream and ink,
+ * which are a different, warmer pairing and would read as the next section rather than as
+ * this one's second screen.
+ *
+ * Keyed to the river's own shape (`narrow`) rather than to a breakpoint, for the reason
+ * `riverIsWide` gives: a `md:` class and the river's aspect test disagree for every tablet
+ * held upright.
+ */
+export function PlaygroundCopyBand({
+  copy,
+  note,
+}: {
+  copy: readonly string[];
+  note: readonly string[];
+}) {
+  return (
+    <div className="w-full bg-white px-6 py-12 text-black">
+      <div
+        style={
+          {
+            maxWidth: COPY_NARROW_MEASURE,
+            fontSize: BODY,
+            lineHeight: BODY_LEADING,
+          } as CSSProperties
+        }
+      >
+        <CopyBody copy={copy} note={note} ruleClassName="border-black/40" />
       </div>
     </div>
   );

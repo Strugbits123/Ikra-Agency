@@ -1,5 +1,4 @@
 import { gsap } from "@/lib/gsap";
-import { NARROW_RIVER_MIN_FRAC } from "./metrics";
 
 /**
  * The river — the orange ribbon that winds down the playground section.
@@ -54,15 +53,15 @@ import { NARROW_RIVER_MIN_FRAC } from "./metrics";
  * A narrow screen therefore gets its own shape rather than a crop or a squash of this one —
  * the same answer `hero/doors.ts` gives to the same kind of problem. **It is also a different
  * composition, not just a different curve.** On the wide layout the river takes the left of
- * the stage and the copy the right; a phone has no right-hand half to give the copy, and the
- * first narrow build tiled a meander down the whole height and set the paragraph *over* it,
- * which was reported as the two overlapping ("the scrolling text is overlapping the text in
- * the red strip"). So the narrow layout splits the stage the other way: the copy rests on the
- * bottom gutter and the river takes whatever is left above it, sweeping from the left edge low
- * in that room to the top edge at the right — the desktop's own gesture (enters high and
- * right, leaves low and left) read in the copy's direction, in the room the copy leaves. The
- * bound it is solved against is the copy's *measured* resting top edge (`clearBelow`), so it
- * is a different river on every phone and never on the paragraph. See `narrowPoints`.
+ * the stage and the copy the right; a phone has no right-hand half to give the copy. The first
+ * narrow build tiled a meander down the whole height and set the paragraph *over* it, which
+ * was reported as the two overlapping; the second rested the copy on the bottom gutter and
+ * solved the river into the room above it. The client's answer was simpler than either: on a
+ * phone the stage is the footage and the ribbon alone, and the copy is its own band *under*
+ * the stage (`PlaygroundCopyBand`). So the narrow river has the whole stage to itself and
+ * sweeps it from the bottom-left edge to the top edge at the right — the desktop's own gesture
+ * (enters high and right, leaves low and left) read in the copy's direction. See
+ * `narrowPoints`.
  *
  * Which of the two a viewport gets is `riverIsWide`, and it is an aspect test rather than a
  * width one — see there for the case that rules a breakpoint out.
@@ -131,14 +130,12 @@ const thicknessFor = (w: number, h: number) =>
  * the floor is where the copy it carries stops being readable at arm's length, the ceiling
  * where a tablet's ribbon starts to read as a block rather than a line.
  *
- * It is also bounded by the room the river has (`bottom`, the stage above the copy): a ribbon
- * can only sweep through a strip about three times its own width — under that the two bends
- * either side of it are crushed into the edges — so a long paragraph on a short phone narrows
- * the ribbon before it crowds it. The floor still wins, which is what NARROW_RIVER_MIN_FRAC in
- * ./metrics then guards.
+ * It is also bounded by the stage's height: a ribbon can only sweep through a strip about
+ * three times its own width — under that the two bends either side of it are crushed into the
+ * edges. That bound is a no-op on every phone held upright and exists for one held sideways.
  */
-const narrowThicknessFor = (w: number, bottom: number) =>
-  gsap.utils.clamp(44, 66, Math.min(w * 0.145, bottom / 3));
+const narrowThicknessFor = (w: number, h: number) =>
+  gsap.utils.clamp(44, 66, Math.min(w * 0.145, h / 3));
 
 /**
  * The shallowest bend in the transcribed run, in reference px — the bottom of the long
@@ -176,9 +173,9 @@ export const RIVER_NARROW_MAX_W = 768;
  * what is tested, through the measured bend rather than through a ratio standing in for it.
  *
  * The answer travels out on `riverFor`'s own `narrow`, because the layout has to make the
- * same decision: a narrow river takes the top of the stage, so the copy has to go full width
- * on the bottom gutter beneath it and take the scrim. Those cannot be left on a `md:` class
- * while this is on the aspect — the two would disagree for every tablet held upright.
+ * same decision: against a narrow river the copy leaves the stage for its own band under it.
+ * That cannot be left on a `md:` class while this is on the aspect — the two would disagree
+ * for every tablet held upright.
  */
 export function riverIsWide(w: number, h: number) {
   if (w < RIVER_NARROW_MAX_W || h <= 0) return false;
@@ -583,7 +580,7 @@ const PLACED = placeWide();
 const WIDE_PLACED = PLACED.points;
 
 /**
- * ## The narrow river: a sweep across the room above the copy
+ * ## The narrow river: a sweep across the stage
  *
  * None of this is transcription — the reference has no narrow layout — so every figure here is
  * a preference and says so. The construction is `hero/band.ts`'s, which the head of this file
@@ -592,8 +589,8 @@ const WIDE_PLACED = PLACED.points;
  * and a sine on a tilted baseline is the one shape whose endpoints, amplitude and bend count
  * can each be retuned without moving the others.
  *
- * The baseline runs from the **left edge, at the bottom of the river's room**, to the **top
- * edge, NARROW_EXIT_U of the way across** — "from the left bottom edge to the right top", the
+ * The baseline runs from the **left edge, at the bottom of the stage**, to the **top edge,
+ * NARROW_EXIT_U of the way across** — "from the left bottom edge to the right top", the
  * brief's own words. A whole number of half-waves (`humps`) rides on it as a *cosine*, phased
  * so the exit is a crest: the wave is at an extremum at both ends, where its slope is zero, so
  * the path leaves each end **parallel to the baseline** and the bleed past it is a straight
@@ -607,18 +604,18 @@ const WIDE_PLACED = PLACED.points;
  * on past both ends — at least NARROW_BLEED_OF_T ribbons, and further until the centreline is
  * a whole ribbon clear of the frame — so that no round cap can come onto the screen under a
  * resize or a collapsing address bar. "Further until clear" is not belt-and-braces: on a phone
- * held sideways with a long paragraph (736 × 568, the copy taking 65% of it) the baseline runs
- * at ~16°, and two ribbons of run along it rises only 31px against the 33 the ribbon needs to
- * leave the top edge — the cap sat on the edge.
+ * held sideways (736 × 568) the baseline runs at a shallow angle, and two ribbons of run
+ * along it can rise less than the ribbon needs to leave the top edge — the cap sat on the
+ * edge.
  *
- * **The bound is enforced after the fact, not assumed.** The lowest ink on screen is measured
- * off the sampled points — as the stroke's own discs, so the few samples just past the left
- * edge whose ink reaches back onto the screen are counted at the height that ink actually
- * reaches — and the whole drawing is shifted so that ink sits *exactly* on `bottom`: up if the
- * construction crossed it, down if it left room (a crest at the entry starts the ribbon a whole
- * amplitude above the baseline, and the room it leaves is the copy's air doubled). The gap to
- * the copy is therefore the one stated in ./metrics at every width, never a function of the
- * hump count, the amplitude or which end is a trough.
+ * **"At the bottom" is enforced after the fact, not assumed.** The lowest ink on screen is
+ * measured off the sampled points — as the stroke's own discs, so the few samples just past
+ * the left edge whose ink reaches back onto the screen are counted at the height that ink
+ * actually reaches — and the whole drawing is shifted so that ink sits *exactly* on the
+ * stage's bottom edge: up if the construction crossed it, down if it left room (a crest at the
+ * entry starts the ribbon a whole amplitude above the baseline). So the ribbon leaves through
+ * the bottom-left corner at every width, never a function of the hump count, the amplitude or
+ * which end is a trough.
  *
  * NARROW_EXIT_U: where the baseline leaves through the top edge, as a fraction of the width.
  * 0.82 rather than the corner — the wide drawing's head leaves at ~0.9 of its band, and
@@ -721,15 +718,14 @@ function widePoints(w: number, h: number) {
 /**
  * The sweep, in viewport px, ordered **bottom-left to top-right** — which is already the
  * downstream-to-upstream order RiverGeometry.points asks for, so unlike the wide drawing this
- * is not reversed by the caller. `bottom` is the lowest y the ink may reach; see the docblock
- * above for the construction.
+ * is not reversed by the caller. See the docblock above for the construction.
  */
-function narrowPoints(w: number, bottom: number, thickness: number) {
+function narrowPoints(w: number, h: number, thickness: number) {
   const half = thickness / 2;
-  // The baseline: in at the left edge with the ribbon's lower edge on the bound, out through
-  // the top edge with its centreline on it.
+  // The baseline: in at the left edge with the ribbon's lower edge on the stage's bottom
+  // edge, out through the top edge with its centreline on it.
   const ax = 0;
-  const ay = bottom - half;
+  const ay = h - half;
   const bx = NARROW_EXIT_U * w;
   const by = 0;
   const L = Math.hypot(bx - ax, by - ay);
@@ -774,59 +770,32 @@ function narrowPoints(w: number, bottom: number, thickness: number) {
     pts.push(at(t));
   }
 
-  // Place the drawing against the bound rather than trusting the construction: the lowest ink
-  // on screen lands exactly on `bottom`. The ink around a sample is a disc of radius `half`; a
-  // sample just past the left edge still puts the part of its disc that is on screen at
-  // `y + sqrt(half² − x²)`, which is why the window is `[-half, w]` and not `[0, w]`.
+  // Place the drawing against the bottom edge rather than trusting the construction: the
+  // lowest ink on screen lands exactly on it. The ink around a sample is a disc of radius
+  // `half`; a sample just past the left edge still puts the part of its disc that is on screen
+  // at `y + sqrt(half² − x²)`, which is why the window is `[-half, w]` and not `[0, w]`.
   let lowest = -Infinity;
   for (const [x, y] of pts) {
     if (x < -half || x > w) continue;
     const reach = x < 0 ? Math.sqrt(half * half - x * x) : half;
     lowest = Math.max(lowest, y + reach);
   }
-  const shift = lowest - bottom;
+  const shift = lowest - h;
   return pts.map(([x, y]) => [x, y - shift] as const);
 }
 
 /**
  * Everything about the river at one viewport size. Pure — it reads no DOM and holds no
  * state, so the caller can memoise it against the measured stage.
- *
- * `clearBelow` is the lowest y the **narrow** river's ink may reach — the copy's resting top
- * edge less a line of air, measured by the component (see `PlaygroundNarrative`). The wide
- * drawing ignores it: there the copy takes the right-hand half and the river the left, and the
- * two already cross only at the copy's top-left corner by design. Omitted, the narrow river is
- * given the whole stage, which is the one commit before the copy has been measured.
- *
- * It is floored at NARROW_RIVER_MIN_FRAC of the stage, because a bound is only useful while
- * there is a river to bound: under that the copy is taller than the room allows and the two
- * overlap over the lowest bend, with the scrim under the copy as the backstop. That is reported
- * in dev rather than hidden — it means the CMS copy has outgrown the phone it is on.
  */
-export function riverFor(
-  w: number,
-  h: number,
-  clearBelow?: number,
-): RiverGeometry {
+export function riverFor(w: number, h: number): RiverGeometry {
   const narrow = !riverIsWide(w, h);
-
-  const floor = NARROW_RIVER_MIN_FRAC * h;
-  const bottom = Math.max(floor, Math.min(h, clearBelow ?? h));
-  if (process.env.NODE_ENV !== "production" && narrow && clearBelow !== undefined && clearBelow < floor) {
-    console.error(
-      `[Playground] the copy leaves the river ${Math.round(clearBelow)}px of a ${h}px stage ` +
-      `at ${w}×${h}, under the ${Math.round(floor)}px floor, so the two overlap over the ` +
-      "river's lowest bend. The copy has outgrown this viewport: shorten it, or lower " +
-      "NARROW_RIVER_MIN_FRAC if the overlap is acceptable.",
-    );
-  }
-
-  const thickness = narrow ? narrowThicknessFor(w, bottom) : thicknessFor(w, h);
+  const thickness = narrow ? narrowThicknessFor(w, h) : thicknessFor(w, h);
 
   // The wide drawing is transcribed top-down and reversed once, here, so every consumer sees
   // one direction — see RiverGeometry.points. The sweep is built in that direction already.
   const points = narrow
-    ? narrowPoints(w, bottom, thickness)
+    ? narrowPoints(w, h, thickness)
     : [...widePoints(w, h)].reverse();
 
   return {
@@ -942,11 +911,10 @@ if (process.env.NODE_ENV !== "production") {
     );
   }
 
-  // The sweep's guarantee: no ink on screen below the bound it was given, and the ribbon in
-  // through the left edge and out through the top one — never through the copy's room, and
-  // never through the right edge, which would read as the river starting from the side. Swept
-  // over phone and upright-tablet viewports with the copy taking a range of shares of the
-  // stage, since the bound is what makes this a different river on every one of them.
+  // The sweep's guarantee: no ink below the stage's bottom edge beyond the half-ribbon that
+  // sits on it, and the ribbon in through the left edge and out through the top one — never
+  // through the right edge, which would read as the river starting from the side. Swept over
+  // phone and upright-tablet viewports.
   //
   // "Out through the top" is checked on the *ink*: some on-screen sample is a whole half-ribbon
   // above the top edge, and no sample whose ink is still visible is past the right edge. The
@@ -956,32 +924,28 @@ if (process.env.NODE_ENV !== "production") {
   let badExit = "";
   for (let w = 320; w < RIVER_NARROW_MAX_W; w += 32) {
     for (let h = 568; h <= 1024; h += 56) {
-      for (const share of [0.35, 0.5, 0.65]) {
-        const bound = share * h;
-        const r = riverFor(w, h, bound);
-        if (!r.narrow) continue;
-        const onScreen = r.points.filter(([x]) => x >= 0 && x <= w);
-        const over =
-          Math.max(...onScreen.map(([, y]) => y)) + r.thickness / 2 - bound;
-        if (over > worstOver) {
-          worstOver = over;
-          worstBoundAt = `${w}×${h} @ ${share}`;
-        }
-        const half = r.thickness / 2;
-        const entersLeft = r.points[0][0] < 0;
-        const leavesTop = onScreen.some(([, y]) => y < -half);
-        const neverRight = r.points.every(([x, y]) => y < -half || x <= w);
-        if (!(entersLeft && leavesTop && neverRight) && !badExit) {
-          badExit = `${w}×${h} @ ${share}`;
-        }
+      const r = riverFor(w, h);
+      if (!r.narrow) continue;
+      const onScreen = r.points.filter(([x]) => x >= 0 && x <= w);
+      const over = Math.max(...onScreen.map(([, y]) => y)) + r.thickness / 2 - h;
+      if (over > worstOver) {
+        worstOver = over;
+        worstBoundAt = `${w}×${h}`;
+      }
+      const half = r.thickness / 2;
+      const entersLeft = r.points[0][0] < 0;
+      const leavesTop = onScreen.some(([, y]) => y < -half);
+      const neverRight = r.points.every(([x, y]) => y < -half || x <= w);
+      if (!(entersLeft && leavesTop && neverRight) && !badExit) {
+        badExit = `${w}×${h}`;
       }
     }
   }
   if (worstOver > 0.5) {
     console.error(
-      `[Playground] the narrow river's ink reaches ${worstOver.toFixed(1)}px below the bound ` +
-      `it was given at ${worstBoundAt}, i.e. onto the copy. narrowPoints' lift is meant to make ` +
-      "this impossible; check the on-screen filter there.",
+      `[Playground] the narrow river's ink reaches ${worstOver.toFixed(1)}px below the ` +
+      `stage's bottom edge at ${worstBoundAt}. narrowPoints' shift is meant to make this ` +
+      "impossible; check the on-screen filter there.",
     );
   }
   if (badExit) {
